@@ -1,0 +1,209 @@
+{
+  "name": "ImportantEmai2TGPushMessage",
+  "nodes": [
+    {
+      "id": "7ce762ea-a200-4892-bef3-9107f0d5caf0",
+      "name": "Get ID only",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -272,
+        -192
+      ],
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Bot"
+        }
+      },
+      "webhookId": "2f8918a6-783d-4f53-adec-982ad3f7f4b4"
+    },
+    {
+      "id": "fccfd26a-4947-4cda-83fd-8aa929c64d6b",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -288
+      ],
+      "parameters": {
+        "content": "Trigger on message to obtain ID where to send notifications (ID serves to send back info to the sender, pov bot)"
+      }
+    },
+    {
+      "id": "d9a1a160-c92e-4987-9abe-ff7cfc909d40",
+      "name": "Save Message",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        208,
+        0
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "RegistroMisImportantes"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Hoja 1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Fecha": "={{ $json.headers.date }}",
+            "Remitente": "={{ $json.headers.from }}",
+            "Asunto": "={{ $json.headers.subject }}",
+            "Resumen/Fragmento": "={{ $json.text }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Remitente",
+              "displayName": "Remitente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Asunto",
+              "displayName": "Asunto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Resumen/Fragmento",
+              "displayName": "Resumen/Fragmento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "id": "12bf29c0-debe-4ef0-a388-d94839fc56f0",
+      "name": "Notification2TG",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        416,
+        0
+      ],
+      "parameters": {
+        "chatId": "TU_CHAT_ID_DE_TELEGRAM",
+        "text": "=📌 ¡NUEVO CORREO IMPORTANTE REGISTRADO!\n\n👤 De: {{ $json.Remitente }}\n📌 Asunto: {{ $json.Asunto }}\n📅 Fecha: {{ $json.Fecha }}\n\n💬 Mensaje: {{ (() => { const texto = $json['Resumen/Fragmento']; const limite = 200; if (texto.length <= limite) return texto; const cortado = texto.substring(0, limite); const ultimoEspacio = cortado.lastIndexOf(' '); return (ultimoEspacio > 0 ? cortado.substring(0, ultimoEspacio) : cortado) + '...'; })() }} (continua)\n\n📊 Este correo ha sido guardado exitosamente en Google Sheets.",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Bot"
+        }
+      },
+      "webhookId": "528d1714-1089-462f-adf4-c172d987fed7"
+    },
+    {
+      "id": "b8219a2f-e178-48be-a9a6-fa4b44bbe3a7",
+      "name": "ImportantEmailCatcher",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "labelIds": [
+            "IMPORTANT"
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Save Message": {
+      "main": [
+        [
+          {
+            "node": "Notification2TG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notification2TG": {
+      "main": [
+        []
+      ]
+    },
+    "ImportantEmailCatcher": {
+      "main": [
+        [
+          {
+            "node": "Save Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "pinData": {},
+  "tags": [],
+  "active": false
+}

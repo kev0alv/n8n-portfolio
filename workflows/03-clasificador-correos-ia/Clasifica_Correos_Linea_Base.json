@@ -1,0 +1,539 @@
+{
+  "name": "CLASIFICA CORREOS - LINEA BASE (AlvarezKevin)",
+  "nodes": [
+    {
+      "id": "f05e3228-cf3f-4818-8fc0-9beac72616a8",
+      "name": "Clasificador por texto",
+      "type": "@n8n/n8n-nodes-langchain.textClassifier",
+      "typeVersion": 1.1,
+      "position": [
+        -352,
+        288
+      ],
+      "parameters": {
+        "inputText": "={{ $json.subject }}, {{ $json.text }} ",
+        "categories": {
+          "categories": [
+            {
+              "category": "INFORMACIÓN Y VENTAS",
+              "description": "Correos relacionados con consultas sobre productos o servicios, precios, disponibilidad, características, promociones, cotizaciones, pedidos o intención de compra."
+            },
+            {
+              "category": "SOPORTE",
+              "description": "Solicitudes de ayuda o asistencia relacionadas con el uso, configuración, funcionamiento, instalación o resolución de problemas de un producto o servicio."
+            },
+            {
+              "category": "RECLAMOS",
+              "description": "Correos donde el cliente expresa una queja, inconformidad o problema con un producto, servicio, pedido, entrega, cobro o atención recibida, y espera una solución."
+            },
+            {
+              "category": "OTROS",
+              "description": "Correos que no corresponden claramente a información y ventas, soporte o reclamos, como consultas generales, comunicaciones administrativas, propuestas, agradecimientos o mensajes no relacionados con la atención comercial."
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "bd6a5b82-0be3-4d67-8fca-fb23eb36ceb2",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -432,
+        544
+      ],
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {}
+      },
+      "credentials": {
+        "groqApi": {
+          "name": "Groq"
+        }
+      }
+    },
+    {
+      "id": "e3a4a6a6-081d-46bc-b7a7-233ff8aa836b",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -816,
+        320
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {},
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail"
+        }
+      }
+    },
+    {
+      "id": "ba9f2e1e-3b5b-4f33-85b0-a8361a2d652b",
+      "name": "INFO. Y VENTAS",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_8262435743091244180"
+        ]
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail"
+        }
+      },
+      "webhookId": "78fb04eb-af05-42be-8f4e-1441cfc2ad36"
+    },
+    {
+      "id": "5fe0099f-12df-4620-8ddd-d3c4c49979bb",
+      "name": "SOPORTE",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        192
+      ],
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_4112253398573021820"
+        ]
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail"
+        }
+      },
+      "webhookId": "78fb04eb-af05-42be-8f4e-1441cfc2ad36"
+    },
+    {
+      "id": "74a90590-8ae2-4518-9f62-613993522367",
+      "name": "RECLAMOS",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        384
+      ],
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_7410029221856401669"
+        ]
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail"
+        }
+      },
+      "webhookId": "78fb04eb-af05-42be-8f4e-1441cfc2ad36"
+    },
+    {
+      "id": "90df424e-2675-4713-a456-bf314378f1f4",
+      "name": "OTROS",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        576
+      ],
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_5242405656681736864"
+        ]
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail"
+        }
+      },
+      "webhookId": "78fb04eb-af05-42be-8f4e-1441cfc2ad36"
+    },
+    {
+      "id": "26d887a7-8244-4ec2-92d1-edc94d5d3dd8",
+      "name": "QUITAR DE IMBOX",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        288
+      ],
+      "parameters": {
+        "operation": "removeLabels",
+        "messageId": "={{ $('Gmail Trigger').item.json.id }}",
+        "labelIds": [
+          "INBOX"
+        ]
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail"
+        }
+      },
+      "webhookId": "4b179c02-d3f3-4d46-aca3-eb1130163525"
+    },
+    {
+      "id": "0f0696ce-23c9-4e2c-8c5b-3ba4c51caf4c",
+      "name": "Marca Inicio",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -576,
+        320
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1de88ec7-d91a-4f6c-bc3c-cf356f448e39",
+              "name": "marca_inicio",
+              "value": "={{ Date.now() }}",
+              "type": "number"
+            },
+            {
+              "id": "8e4ad41b-a5d9-4457-8c3c-ac4617234826",
+              "name": "Inicio_f_estandar",
+              "value": "={{ $now.setZone('America/El_Salvador').format('dd-MM-yyyy HH:mm:ss') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "819b38ee-bca8-4807-8039-17fa1bbcf897",
+      "name": "Calcular Metricas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        288
+      ],
+      "parameters": {
+        "jsCode": "// Configuración de zona horaria y formato estándar\nconst ZONA_HORARIA = 'America/El_Salvador';\nconst FORMATO_ESTANDAR = 'yyyy-MM-dd HH:mm:ss';\n\nconst tiempoFinMs = Date.now();\n\n// 1. Extraer los datos de inicio DIRECTAMENTE del nodo \"Marca Inicio\"\nconst datosInicio = $(\"Marca Inicio\").first().json;\n\n// 2. Obtener marca_inicio y forzar conversión a número\nconst marcaInicio = Number(datosInicio.marca_inicio);\n\n// 3. Obtener la fecha de inicio formateada o calcularla\nconst inicioFEstandar = datosInicio.Inicio_f_estandar \n  || $now.constructor.fromMillis(marcaInicio).setZone(ZONA_HORARIA).toFormat(FORMATO_ESTANDAR);\n\n// 4. Generar fecha y hora de finalización actual\nconst finFEstandar = $now.setZone(ZONA_HORARIA).toFormat(FORMATO_ESTANDAR);\n\n// 5. Cálculos de duración\nconst duracionMs = Math.max(0, tiempoFinMs - marcaInicio);\nconst duracionSegundos = parseFloat((duracionMs / 1000).toFixed(3));\n\nreturn [{\n  json: {\n    nombre_del_flujo_de_trabajo: \"CLASIFICA CORREOS - LINEA BASE\",\n    estado: \"éxito\",\n    inicio: inicioFEstandar,\n    final: finFEstandar,\n    duracion_ms: duracionMs,\n    duracion_s: duracionSegundos,\n    mensaje_de_error: \"\"\n  }\n}];"
+      }
+    },
+    {
+      "id": "e06f7b3b-0f41-4a35-b6b4-02829e130455",
+      "name": "Append row in sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        656,
+        288
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "Metricas_ClasificaCorreos_AlvarezKevin"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Hoja 1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Workflow": "={{ $json.nombre_del_flujo_de_trabajo }}",
+            "Estado": "={{ $json.estado }}",
+            "Inicio": "={{ $json.inicio }}",
+            "Final": "={{ $json.final }}",
+            "Error": "={{ $json.mensaje_de_error }}",
+            "Duracion_s": "={{ $json.duracion_s }}",
+            "Fecha_Hora": "={{ $now.setZone('America/El_Salvador').format('dd-MM-yyyy HH:mm:ss') }}",
+            "duración_ms": "={{ $json.duracion_ms }}",
+            "Registrado_por": "LINEA_BASE"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Fecha_Hora",
+              "displayName": "Fecha_Hora",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Workflow",
+              "displayName": "Workflow",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Inicio",
+              "displayName": "Inicio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Final",
+              "displayName": "Final",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Error",
+              "displayName": "Error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Duracion_s",
+              "displayName": "Duracion_s",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "duración_ms",
+              "displayName": "duración_ms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Categoria",
+              "displayName": "Categoria",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Ruta",
+              "displayName": "Ruta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Registrado_por",
+              "displayName": "Registrado_por",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Clasificador por texto": {
+      "main": [
+        [
+          {
+            "node": "INFO. Y VENTAS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SOPORTE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RECLAMOS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "OTROS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Marca Inicio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RECLAMOS": {
+      "main": [
+        [
+          {
+            "node": "QUITAR DE IMBOX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "INFO. Y VENTAS": {
+      "main": [
+        [
+          {
+            "node": "QUITAR DE IMBOX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SOPORTE": {
+      "main": [
+        [
+          {
+            "node": "QUITAR DE IMBOX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OTROS": {
+      "main": [
+        [
+          {
+            "node": "QUITAR DE IMBOX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marca Inicio": {
+      "main": [
+        [
+          {
+            "node": "Clasificador por texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QUITAR DE IMBOX": {
+      "main": [
+        [
+          {
+            "node": "Calcular Metricas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calcular Metricas": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Clasificador por texto",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "tags": [],
+  "active": false
+}

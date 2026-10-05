@@ -1,0 +1,4 @@
+.env
+*.local.json
+# Exportaciones crudas (sin limpiar) — pasalas por scripts/sanitize_workflow.py antes de subirlas
+exports/
