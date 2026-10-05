@@ -1,0 +1,633 @@
+{
+  "name": "CLASIFICA CORREOS - OPTIMIZADO (AlvarezKevin)",
+  "nodes": [
+    {
+      "id": "22bc54d3-e4c1-413c-94d4-ff81f37b1778",
+      "name": "Diario 7:50 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        32,
+        432
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7,
+              "triggerAtMinute": 50
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a0d273cf-86db-4734-a7bd-da049aa59b5e",
+      "name": "Marca Inicio",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        432
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0f000002-a",
+              "name": "marca_inicio",
+              "value": "={{ Date.now() }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5e0d4e59-3cc1-4cf2-9d6c-88b9ad43bcb2",
+      "name": "Obtener Correos del Inbox",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        464,
+        432
+      ],
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "simple": false,
+        "filters": {
+          "labelIds": [
+            "INBOX"
+          ],
+          "q": "after:2026/09/07"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "webhookId": "0f000003-aaaa-4000-8000-000000000003"
+    },
+    {
+      "id": "29899dcc-60a5-4fe0-8dba-6978e71271a1",
+      "name": "Clasificador Groq",
+      "type": "@n8n/n8n-nodes-langchain.textClassifier",
+      "typeVersion": 1.1,
+      "position": [
+        704,
+        432
+      ],
+      "parameters": {
+        "inputText": "=De: {{ $json.from?.value?.[0]?.address ?? '' }}\nAsunto: {{ $json.subject || '(sin asunto)' }}\nCuerpo: {{ ($json.text || '').slice(0, 2000) }}",
+        "categories": {
+          "categories": [
+            {
+              "category": "INFORMACIÓN Y VENTAS",
+              "description": "Correos de clientes con consultas sobre productos o servicios, precios, disponibilidad, características, promociones, cotizaciones, pedidos o intención de compra."
+            },
+            {
+              "category": "SOPORTE",
+              "description": "Solicitudes de ayuda o asistencia de clientes relacionadas con el uso, configuración, funcionamiento, instalación, acceso a cuentas o resolución de problemas de un producto o servicio."
+            },
+            {
+              "category": "RECLAMOS",
+              "description": "Correos donde el cliente expresa una queja, inconformidad o problema con un producto, servicio, pedido, entrega, cobro o atención recibida, y espera una solución."
+            },
+            {
+              "category": "OTROS",
+              "description": "Correos de personas que no corresponden claramente a información y ventas, soporte o reclamos, como consultas generales, comunicaciones administrativas, propuestas, agradecimientos o mensajes sin contenido claro."
+            },
+            {
+              "category": "PROVEEDORES",
+              "description": "Correos enviados por proveedores de servicios y plataformas que usa la empresa. Se identifican por el DOMINIO DEL REMITENTE (línea 'De:'): spotify.com, supabase.com, hubspot.com, google.com, googlemail.com, lovable.dev, deepseek.com o docker.com, incluyendo cualquier subdominio (por ejemplo alerts.spotify.com, accounts.google.com, notifications.hubspot.com, sc.mail.deepseek.com, notify.docker.com). Si el remitente pertenece a uno de esos dominios, clasifica SIEMPRE aquí, sin importar el contenido (notificaciones, alertas de seguridad, facturación, promociones, newsletters o mensajes de vendedores)."
+            }
+          ]
+        },
+        "options": {
+          "fallback": "other",
+          "batching": {
+            "batchSize": 3,
+            "delayBetweenBatches": 25000
+          }
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "36729a91-57f3-461b-8ca9-c4ff3902b6de",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        656,
+        736
+      ],
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {}
+      },
+      "credentials": {
+        "groqApi": {
+          "name": "Groq"
+        }
+      }
+    },
+    {
+      "id": "a3b2220b-85d8-4e51-94de-fce808611f0f",
+      "name": "Clasificador Gemini (respaldo)",
+      "type": "@n8n/n8n-nodes-langchain.textClassifier",
+      "typeVersion": 1.1,
+      "position": [
+        1056,
+        704
+      ],
+      "parameters": {
+        "inputText": "=De: {{ $json.from?.value?.[0]?.address ?? '' }}\nAsunto: {{ $json.subject || '(sin asunto)' }}\nCuerpo: {{ ($json.text || '').slice(0, 2000) }}",
+        "categories": {
+          "categories": [
+            {
+              "category": "INFORMACIÓN Y VENTAS",
+              "description": "Correos de clientes con consultas sobre productos o servicios, precios, disponibilidad, características, promociones, cotizaciones, pedidos o intención de compra."
+            },
+            {
+              "category": "SOPORTE",
+              "description": "Solicitudes de ayuda o asistencia de clientes relacionadas con el uso, configuración, funcionamiento, instalación, acceso a cuentas o resolución de problemas de un producto o servicio."
+            },
+            {
+              "category": "RECLAMOS",
+              "description": "Correos donde el cliente expresa una queja, inconformidad o problema con un producto, servicio, pedido, entrega, cobro o atención recibida, y espera una solución."
+            },
+            {
+              "category": "OTROS",
+              "description": "Correos de personas que no corresponden claramente a información y ventas, soporte o reclamos, como consultas generales, comunicaciones administrativas, propuestas, agradecimientos o mensajes sin contenido claro."
+            },
+            {
+              "category": "PROVEEDORES",
+              "description": "Correos enviados por proveedores de servicios y plataformas que usa la empresa. Se identifican por el DOMINIO DEL REMITENTE (línea 'De:'): spotify.com, supabase.com, hubspot.com, google.com, googlemail.com, lovable.dev, deepseek.com o docker.com, incluyendo cualquier subdominio (por ejemplo alerts.spotify.com, accounts.google.com, notifications.hubspot.com, sc.mail.deepseek.com, notify.docker.com). Si el remitente pertenece a uno de esos dominios, clasifica SIEMPRE aquí, sin importar el contenido (notificaciones, alertas de seguridad, facturación, promociones, newsletters o mensajes de vendedores)."
+            }
+          ]
+        },
+        "options": {
+          "fallback": "other",
+          "batching": {
+            "batchSize": 3,
+            "delayBetweenBatches": 25000
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "404d2f11-cf54-48ad-9d2e-eb294db5c2da",
+      "name": "Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        944,
+        976
+      ],
+      "parameters": {
+        "modelName": "models/gemini-3.7-flash",
+        "options": {}
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "name": "Google Gemini"
+        }
+      }
+    },
+    {
+      "id": "16f6a7c7-9ce5-41db-a6b1-a77137f7fe0c",
+      "name": "Etiquetar Correos",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1328,
+        432
+      ],
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": "={{ [\n  [\"Label_8262435743091244180\"],\n  [\"Label_4112253398573021820\"],\n  [\"Label_7410029221856401669\"],\n  [\"Label_5242405656681736864\"],\n  [\"Label_1504488627485043226\"],\n  [\"Label_5242405656681736864\"]\n][$prevNode.outputIndex] }}"
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "webhookId": "0f000008-aaaa-4000-8000-000000000008"
+    },
+    {
+      "id": "c33bd10e-caf5-4975-a0b8-8b73063baa1b",
+      "name": "QUITAR DE INBOX",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1552,
+        432
+      ],
+      "parameters": {
+        "operation": "removeLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "INBOX"
+        ]
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "webhookId": "0f000009-aaaa-4000-8000-000000000009"
+    },
+    {
+      "id": "1c337264-3283-45ad-8c0e-f531d966c9a7",
+      "name": "Calcular Metricas por Correo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        432
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// M5 + M7: una fila de métricas POR CORREO, formato de fecha único\nconst ZONA = 'America/El_Salvador';\nconst FORMATO = 'yyyy-MM-dd HH:mm:ss';\nconst ETIQUETAS = {\n  'Label_8262435743091244180': 'INFORMACIÓN Y VENTAS',\n  'Label_4112253398573021820': 'SOPORTE',\n  'Label_7410029221856401669': 'RECLAMOS',\n  'Label_5242405656681736864': 'OTROS',\n  'Label_1504488627485043226': 'PROVEEDORES'\n};\nconst RESPALDO = 'Clasificador Gemini (respaldo)';\n\nconst inicioMs = Number($('Marca Inicio').first().json.marca_inicio);\nconst finMs = Date.now();\n\nconst categoria = ($json.labelIds || []).map(id => ETIQUETAS[id]).find(Boolean) || 'SIN ETIQUETA';\n\n// Ruta: qué modelo clasificó este correo (M2)\nlet ruta = 'GROQ';\ntry {\n  if ($(RESPALDO).isExecuted) {\n    for (let salida = 0; salida < 6; salida++) {\n      if ($(RESPALDO).all(salida).some(it => it.json.id === $json.id)) { ruta = 'GEMINI (respaldo)'; break; }\n    }\n  }\n} catch (e) { /* el respaldo no corrió */ }\n\nreturn {\n  json: {\n    Fecha_Hora: DateTime.fromMillis(finMs).setZone(ZONA).toFormat(FORMATO),\n    Workflow: 'CLASIFICA CORREOS - OPTIMIZADO',\n    Estado: 'éxito',\n    Inicio: DateTime.fromMillis(inicioMs).setZone(ZONA).toFormat(FORMATO),\n    Final: DateTime.fromMillis(finMs).setZone(ZONA).toFormat(FORMATO),\n    Error: '',\n    Duracion_s: Number(((finMs - inicioMs) / 1000).toFixed(3)),\n    'duración_ms': finMs - inicioMs,\n    Categoria: categoria,\n    Ruta: ruta,\n    Registrado_por: 'OPTIMIZADO'\n  }\n};"
+      }
+    },
+    {
+      "id": "37172942-e208-48f3-bea6-b63e20f5a0c1",
+      "name": "Registrar Metricas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1984,
+        432
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "Metricas_ClasificaCorreos_AlvarezKevin"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Hoja 1"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Fecha_Hora",
+              "displayName": "Fecha_Hora",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Workflow",
+              "displayName": "Workflow",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Inicio",
+              "displayName": "Inicio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Final",
+              "displayName": "Final",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Error",
+              "displayName": "Error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Duracion_s",
+              "displayName": "Duracion_s",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "duración_ms",
+              "displayName": "duración_ms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Categoria",
+              "displayName": "Categoria",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Ruta",
+              "displayName": "Ruta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Registrado_por",
+              "displayName": "Registrado_por",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "b62a582e-8268-4b9c-8e5c-94065f4c8312",
+      "name": "Nota Mejoras",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "content": "## CLASIFICA CORREOS - OPTIMIZADO\n**M1** PROVEEDORES como 5a categoria (por dominio del remitente)\n**M2** Groq principal -> Gemini respaldo (salida de error)\n**M3** Error Workflow -> Workflow_ErroresMetricas_ClasificaCorreos\n**M4** Sin coincidencia -> salida 'Other' -> OTROS\n**M5** Una fila de metricas por correo\n**M6** Cuerpo recortado a 2,000 caracteres + lotes de 3 con pausa de 25 s\n**M7** Fechas en un solo formato, nombres corregidos\n**M8** 4 nodos Gmail -> 1 'Etiquetar Correos' ($prevNode.outputIndex)\n\n Riesgo de mantenimiento: el arreglo de etiquetas depende del ORDEN de las categorias. No reordenar sin actualizarlo.",
+        "height": 340,
+        "width": 520,
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "Diario 7:50 AM": {
+      "main": [
+        [
+          {
+            "node": "Marca Inicio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marca Inicio": {
+      "main": [
+        [
+          {
+            "node": "Obtener Correos del Inbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Correos del Inbox": {
+      "main": [
+        [
+          {
+            "node": "Clasificador Groq",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clasificador Groq": {
+      "main": [
+        [
+          {
+            "node": "Etiquetar Correos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Etiquetar Correos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Etiquetar Correos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Etiquetar Correos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Etiquetar Correos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Etiquetar Correos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Clasificador Gemini (respaldo)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clasificador Gemini (respaldo)": {
+      "main": [
+        [
+          {
+            "node": "Etiquetar Correos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Etiquetar Correos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Etiquetar Correos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Etiquetar Correos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Etiquetar Correos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Etiquetar Correos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Clasificador Groq",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Clasificador Gemini (respaldo)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Etiquetar Correos": {
+      "main": [
+        [
+          {
+            "node": "QUITAR DE INBOX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QUITAR DE INBOX": {
+      "main": [
+        [
+          {
+            "node": "Calcular Metricas por Correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calcular Metricas por Correo": {
+      "main": [
+        [
+          {
+            "node": "Registrar Metricas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "timezone": "America/El_Salvador",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "tags": [],
+  "active": false
+}

@@ -1,0 +1,126 @@
+{
+  "name": "Asistente 1.0",
+  "nodes": [
+    {
+      "id": "bdb29ba7-b321-4eb9-885f-21ae3e1259af",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        688,
+        -144
+      ],
+      "parameters": {
+        "public": true,
+        "initialMessages": "¡Hola! Soy Djohn, la \"D\" es muda.\nSere tu asistente virtual, escribe el nombre del cliente de quien deseas dar seguimiento",
+        "options": {}
+      },
+      "webhookId": "4529e11b-1a22-48e3-8a95-d8cc55e012b2"
+    },
+    {
+      "id": "22612278-d9d6-41bd-bf55-81a11d54aee4",
+      "name": "Customer Datastore (n8n training)",
+      "type": "n8n-nodes-base.n8nTrainingCustomerDatastore",
+      "typeVersion": 1,
+      "position": [
+        912,
+        -144
+      ],
+      "parameters": {
+        "operation": "getAllPeople",
+        "returnAll": true
+      }
+    },
+    {
+      "id": "f431e708-4a4e-4414-8b7d-489284893d18",
+      "name": "Filter",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1136,
+        -144
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5ae1d155-fe92-47c0-9b1e-d3fd795e9335",
+              "leftValue": "={{ $json.name.toLowerCase() }}",
+              "rightValue": "={{ $('When chat message received').item.json.chatInput.toLowerCase()}}",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "dc758337-7d69-479f-b76e-2e771549c27d",
+      "name": "Customer Messenger (n8n training)",
+      "type": "n8n-nodes-base.n8nTrainingCustomerMessenger",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        -144
+      ],
+      "parameters": {
+        "customerId": "={{ $json.name }}",
+        "message": "={{ $json.name ? \"¡Hola \" + $json.name + \"!\\n\\nHe encontrado tu información en nuestro sistema.\\n\\nTu email registrado es \" + $json.email + \"\\n\\nTenemos este mensaje de tu parte: *\" + $json.notes + \"*. Dime, ¿en qué puedo ayudarte?\" : \"No se encontró ningún cliente registrado con ese nombre. Por favor, verifica e intenta nuevamente.\" }}"
+      },
+      "alwaysOutputData": true
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Customer Datastore (n8n training)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Customer Datastore (n8n training)": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Customer Messenger (n8n training)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "pinData": {},
+  "tags": [],
+  "active": false
+}

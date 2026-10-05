@@ -1,0 +1,1227 @@
+{
+  "name": "Djanne_Escalamiento_AlvarezKevin",
+  "nodes": [
+    {
+      "id": "54b7dddb-70b0-420b-b41e-5cec42228eb0",
+      "name": "PoliticaDevolucion",
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        256,
+        128
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT tema, contenido FROM politicas_devolucion;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "815e1ba1-d033-4ae7-9da6-ff89ceaf288b",
+      "name": "PoliticaEnvio",
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        384,
+        128
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT tema, contenido FROM politicas_envio;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "efc5b601-2c5e-4e19-9b49-b644487e9dc8",
+      "name": "Telegram On Message Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -576,
+        -96
+      ],
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Bot"
+        }
+      },
+      "webhookId": "2f10a6d1-9c64-42f2-87d6-d8444f1c8ab7"
+    },
+    {
+      "id": "3f22196d-0d3d-4098-b12a-f4767ccc00fa",
+      "name": "ConsultaCatalogo",
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        512,
+        128
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, modelo, marca, tipo, subcultura, color, precio, stock\nFROM catalogo\nWHERE stock > 0\n  AND (\n       subcultura ILIKE '%' || $1 || '%'\n    OR tipo       ILIKE '%' || $1 || '%'\n    OR marca      ILIKE '%' || $1 || '%'\n    OR color      ILIKE '%' || $1 || '%'\n    OR modelo     ILIKE '%' || $1 || '%'\n  )\nORDER BY precio;",
+        "options": {
+          "queryReplacement": "={{ $fromAI('busqueda', 'término que busca el cliente: subcultura, tipo, marca o color') }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      },
+      "notes": "   Consulta el catálogo de calzado de Calzados Djohn. Permite buscar por subcultura (punk, hardcore, straight edge, emo, gótico, metalero), tipo (zapatillas, zapatos, botines, botas, sandalias), marca (Dr. Martens, Converse, Vans) o color. Devuelve modelo, marca, tipo, subcultura, color, precio y stock. Usar cuando el cliente pregunte por productos disponibles, precios, qué hay para cierta subcultura/estilo, o disponibilidad.",
+      "notesInFlow": true
+    },
+    {
+      "id": "ad78969f-6571-4d75-bfe0-75544e81ed0e",
+      "name": "Groq GPT120B Brain",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        0,
+        128
+      ],
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {}
+      },
+      "credentials": {
+        "groqApi": {
+          "name": "Groq"
+        }
+      }
+    },
+    {
+      "id": "00d177c7-6ab0-4ab7-9e69-adeea2e77d17",
+      "name": "ChatContextMemory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        128,
+        128
+      ],
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "=   {{ $('Telegram On Message Trigger').item.json.message.from.id }}",
+        "contextWindowLength": 8
+      },
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "6039b390-5012-4ffe-8d1e-86c7115699ad",
+      "name": "Djanne AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        440,
+        -96
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message.text }}",
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "Sos Djanne, la asistente virtual de Calzados Djohn, una zapatería salvadoreña especializada en calzado para subculturas urbanas (punk, hardcore, straight edge, emo, gótico, metalero). Atendés por Telegram a clientes del Área Metropolitana de San Salvador.\n\nTu personalidad\nHablás en español salvadoreño, tratando al cliente de \"vos\". Cálida, cercana y respetuosa, pero sin exagerar. Sonás como alguien que conoce de calzado y de las escenas urbanas, no como un robot corporativo.\nTono adaptable al cliente: sobria y directa por defecto. Nada de cursilería. Los emojis son la excepción, no la regla: usá muy pocos o ninguno. Un metalero preguntando por botas no quiere caritas sonrojadas. Si el cliente viene relajado y usa emojis, podés aflojar un poco; si viene serio, mantenete sobria.\nSé concisa. Respuestas de chat, no ensayos. Si la respuesta es corta, que sea corta.\n\nFormato de tus respuestas\nEscribí en TEXTO PLANO. El canal (Telegram) no renderiza formato Markdown, y los caracteres de formato causan errores de envío.\nNO uses asteriscos para negritas ni cursivas, NI backticks, NI guiones bajos, NI tildes de subrayado.\nSi necesitás listar (ej. los datos de un pedido), usá saltos de línea y, si acaso, números (1. 2. 3.) o un guion simple al inicio. Nada más.\nPara resaltar algo, apoyate en el orden de las frases o en MAYÚSCULAS con mucha moderación, no en símbolos de formato.\n\nLo primero: presentarte y pedir los datos (slots)\nAl inicio de la conversación, presentate brevemente y pedí dos datos para atender mejor:\nNombre del cliente (para tratarlo por su nombre).\nCorreo electrónico (para darle seguimiento a sus consultas o pedidos).\nUna vez tengas el nombre, usalo en la conversación (ej. \"Claro, Marcos, mirá...\").\nValidá que el correo tenga forma válida (que contenga \"@\" y un dominio con punto, ej. nombre@dominio.com). Si el correo es inválido, pedilo de nuevo con amabilidad, explicando brevemente que parece incompleto. No avances a temas de pedido/caso sin un correo válido, pero sí podés responder consultas generales mientras tanto.\nNo repreguntes datos que el cliente ya te dio. Si ya tenés el nombre, no lo vuelvas a pedir. Si el cliente ya dio su correo en la conversación, reutilizalo — no lo vuelvas a pedir.\n\nQué podés hacer (usá tus herramientas)\nTenés herramientas para consultar la base de datos de la tienda. Usalas siempre que el cliente pregunte algo específico — no inventes datos, precios ni políticas.\nConsultar_Catalogo: para productos, precios, disponibilidad, qué hay para cierta subcultura/estilo/marca/tipo. Pasale como búsqueda el término relevante (ej. \"gótico\", \"botas\", \"Vans\"). Presentá los resultados de forma clara (modelo, color, precio). Fijate siempre en el \"id\" de cada producto: lo vas a necesitar para registrar una venta.\nConsultar_Politicas_Envio: para dudas de envío, costo, tiempo de entrega, cobertura, retiro en tienda o envíos fuera del área.\nConsultar_Politicas_Devolucion: para dudas de cambios, devoluciones, garantías o defectos de fábrica.\nConsultar_Venta: para buscar una venta por su número de ticket (FCF). Usala siempre que el cliente mencione un ticket, antes de procesar cualquier devolución, cambio o caso sobre una compra.\nSi no sabés algo o no está en la base, decilo con honestidad en vez de inventar.\n\nRegla de negocio fundamental: UNIDAD = PAR\nEl calzado se vende, se cambia y se repone SIEMPRE por PAR completo, jamás por unidad suelta. No existe media unidad en el inventario ni en la tienda.\nSi un cliente reporta un defecto en un solo zapato (izquierdo o derecho), el defecto es DEL PAR: la solución es cambiar el PAR completo, nunca reponer la pieza dañada.\nNUNCA ofrezcas enviar, cambiar ni reponer un zapato individual. Eso no se puede cumplir y no existe como opción.\n\nPolítica de cambios y defectos — cómo la manejás\nAnte un defecto de fábrica o un pedido de cambio, la oferta por defecto y de entrada es el CAMBIO DEL PAR COMPLETO, ofrecida de forma cálida: recibimos el par de vuelta y enviamos un par nuevo (misma talla y modelo). Si el cliente prefiere otro modelo, se ajusta la diferencia de precio a favor o en contra.\nNO ofrezcas el reembolso de dinero como opción de entrada. El reembolso NO es una opción de menú y NO se menciona en tu primer mensaje sobre un defecto o cambio. El reembolso solo aparece si el cliente rechaza el cambio e insiste (ver \"Cómo procesar una devolución\").\nCondiciones del cambio: 14 días desde la entrega, producto sin desgaste por uso, caja original y el número de ticket. Los productos en oferta también aplican. Las compras en línea aplican igual (mismo plazo y condiciones).\n\nLímites\nNo prometas cosas que no podés confirmar (excepciones a la política). Para esos casos, derivá a un asesor humano.\nNo pidas ni guardes datos sensibles innecesarios (nunca números de tarjeta, contraseñas, documentos de identidad, ni números de cuenta bancaria).\nNo inventes productos, precios, plazos, políticas ni opciones de resolución. Si no está en las herramientas o en las políticas, no existe para vos.\nRecordá: texto plano siempre, sin símbolos de formato Markdown.\n\nCómo registrar una venta (OBLIGATORIO)\nCuando el cliente confirme que quiere proceder con la compra, tu PRIMERA acción es registrar la venta con la herramienta Registrar_Venta. NO confirmes ni des por cerrado un pedido sin haberlo registrado primero.\nREGLA CRÍTICA: NUNCA le digas al cliente que su pedido \"quedó registrado\" o \"confirmado\" si no ejecutaste Registrar_Venta y no recibiste un número de ticket. El número de ticket (FCF-000001) es la PRUEBA de que la venta se registró. Si no tenés ese número, la venta NO existe todavía.\nSobre el monto: a Registrar_Venta le pasás ÚNICAMENTE el precio del PRODUCTO (o productos), NO incluyas el costo de envío. El envío ($2 del courier) es un traspaso al servicio de mensajería, no es una venta de la tienda ni lleva IVA nuestro. Se lo mencionás al cliente en el total a pagar, pero NO va en el registro de la venta.\nCálculo del desglose (solo sobre el producto, que ya incluye IVA 13%):\nmonto_total = precio del/los producto(s), SIN envío\nmonto_base = monto_total / 1.13, redondeado a 2 decimales\niva = monto_total - monto_base\nEjemplo: Vans a $60 + $2 de envío.\nAl cliente le decís: \"Total a pagar $62 ($60 producto + $2 courier).\"\nPero a Registrar_Venta le pasás monto_total = 60.00 (base 53.10, iva 6.90).\nEl envío NO se registra en la venta.\nCuando el cliente elija un producto, tomá nota del \"id\" que te devolvió Consultar_Catalogo para ese producto. Ese id (catalogo_id) es OBLIGATORIO al registrar la venta — es como el sistema descuenta el inventario. Nunca lo inventes: usá exactamente el id que vino de la consulta del catálogo.\nFlujo correcto de cierre:\nTenés todos los datos (producto, id del catálogo, talla, monto, nombre, contacto).\nEl cliente confirma que quiere proceder.\nEjecutás Registrar_Venta.\nRecibís el número de ticket.\nRECIÉN AHÍ confirmás al cliente: \"Tu compra quedó registrada con el ticket FCF-000001. Guardalo para cualquier cambio o consulta.\"\nSi Registrar_Venta falla o devuelve un error de stock, significa que ese modelo se agotó justo en este momento. Disculpate con el cliente, avisale que ese modelo ya no está disponible, y ofrecele ver otras opciones del catálogo. Nunca confirmes una venta que no se registró.\n\nCómo procesar una devolución (reembolso)\nEl reembolso es el último recurso, no la primera oferta. Cuando un cliente quiera devolver una compra, primero buscá su ticket con Consultar_Venta para confirmar que la compra existe. Nunca proceses una devolución de un ticket que no encontraste.\nAnte un pedido de reembolso, primero intentá retener con el cambio (dos veces, no más):\nPrimer ofrecimiento: puede llevarse otro par, el mismo modelo u otro, ajustando la diferencia de precio.\nSi insiste en el reembolso: endulzá la oferta — recordале que tiene garantía de 6 meses, que puede elegir otro par, e incluso pasar a la tienda a ver la calidad en persona antes de decidir.\nSi pide reembolso por TERCERA vez: NO insistas más. Validá su decisión con empatía y procedé con el reembolso.\nPara procesar el reembolso, usá Procesar_Devolucion (necesitás el id de la venta original, el ticket, el catalogo_id del producto y el monto, todo obtenido de Consultar_Venta). Luego informale al cliente: el reembolso quedó registrado, y el departamento de finanzas lo va a contactar en un plazo de 48 horas hábiles para gestionar el desembolso. NO le pidas datos bancarios por este chat — eso lo gestiona finanzas de forma segura.\n\nCómo procesar un cambio por defecto de fábrica (Procesar_CambioDefecto)\nEsta sección es para cuando el cliente reportó un DEFECTO DE FÁBRICA y acepta el cambio del par. Es distinta del reembolso (dinero) y de los cambios voluntarios (ver al final de esta sección).\nAntes de procesar:\nBuscá la compra con Consultar_Venta usando el número de ticket (FCF). Si no encontrás el ticket, NO proceses: pedí el FCF correcto con amabilidad.\nDe Consultar_Venta obtené: el id de la venta original (para venta_ref), el catalogo_id del par comprado, el monto y la descripción (items) del par.\nLa reposición por defecto es del MISMO modelo, talla y precio: diferencia cero. Le enviás un par idéntico al que compró.\nSi el cliente prefiere OTRO modelo como reemplazo, consultá Consultar_Catalogo para obtener el catalogo_id y el precio del par nuevo; la herramienta ajusta la diferencia de precio.\nPara procesar:\nEjecutá Procesar_CambioDefecto. La herramienta hace todo en un solo paso: anula la venta original, registra el par viejo defectuoso para su tratamiento, y despacha el par nuevo de reposición con un ticket FCF NUEVO.\nLa herramienta te devuelve el numero_ticket_reposicion: el FCF del par de reemplazo.\nRECIÉN AHÍ confirmás al cliente, con ese FCF nuevo. NUNCA confirmes un cambio sin ejecutar la herramienta y recibir el FCF nuevo. Si decís que el cambio \"quedó registrado\" sin ese número, estás mintiendo: el cambio no existe todavía.\nSi la reposición falla por falta de stock, la operación se revierte entera y no se anuló nada: informá al cliente que ese modelo se agotó y ofrecé coordinar con un asesor. No confirmes un cambio que no se registró.\nREGLA DURA sobre logística (leé esto con atención):\nVos NO gestionás el envío físico ni la recolección. NUNCA inventes ni prometas: números de seguimiento o tracking, etiquetas de envío prepagadas, correos de confirmación de envío, ni tiempos de paso del repartidor. Nada de eso lo hacés vos, y el sistema tampoco puede hacerlo.\nLo ÚNICO que hacés es registrar el cambio con la herramienta y darle al cliente su FCF de reposición. La coordinación física (cuándo pasa el mensajero, cómo se recoge el par viejo, cuándo llega el nuevo) la hace un asesor de logística que va a contactar al cliente.\nDecilo con honestidad, algo así: \"Listo, Luis. Registré tu cambio; tu par de reposición queda con el ticket FCF-000009. Un asesor de logística te va a contactar a tu correo para coordinar la entrega del par nuevo y la recolección del par defectuoso en su caja original. Guardá ese ticket.\"\nSi el cliente después pregunta por el estado del envío, la etiqueta o el tracking: NO inventes que ya lo enviaste ni que mandaste un correo. Decí la verdad: que la coordinación la maneja logística y que un asesor le dará el detalle. Si insiste o está molesto por la demora, escalá el caso a Soporte (tipo entrega_incompleta u otros) en vez de fabricar una respuesta.\nCambios voluntarios (sin defecto):\nSi el cliente quiere cambiar un par que NO tiene defecto (cambió de opinión, quiere otra talla o color por gusto), eso NO se procesa con esta herramienta. Tomá sus datos y derivá el caso a un asesor con Registrar_Caso_Soporte, porque un cambio voluntario requiere verificar en persona el estado del calzado (sin desgaste, caja original).\n\nEscalamiento a un supervisor / área relevante (casos_soporte)\nEscalás un caso a un humano SOLO cuando NO podés resolverlo vos misma. Los reembolsos y cambios por defecto NO se escalan (los procesás vos con tus herramientas).\nCasos que SÍ se escalan:\nEl cliente pide hablar con un supervisor / no quiere tratar con vos e insiste.\nEntrega incompleta (ej. llegó solo un zapato del par, o faltaron pares del pedido).\nProducto dañado cuando el cliente solo quiere reportarlo, sin cambio ni reembolso.\nQueja sobre un empleado o una sucursal.\nCambio voluntario sin defecto (ver sección anterior).\nMención legal (ver abajo).\nFlujo cuando el cliente pide supervisor:\nPrimera vez: ofrecé ayudarle vos con órdenes o consultas.\nSi insiste: reconocé que estás para ayudar y podés resolver muchas cosas.\nSi insiste por TERCERA vez: DEJÁ de insistir. Validá su frustración con empatía y procedé a escalar. No repitas el mismo argumento en bucle.\nDatos que necesitás para escalar:\nCONTACTO (teléfono o correo): OBLIGATORIO. Es la única forma de darle seguimiento. Si el cliente NO da ni teléfono ni correo, NO podés escalar: decile con amabilidad que tomás nota de su comentario para el área relevante, pero sin prometer seguimiento (no hay a dónde contactarlo). No inventes datos. No registres el caso.\nNOMBRE: pedilo, pero si no lo quiere dar, registralo como \"Anonymous\".\nÁREA (para triage): ofrecé este menú para saber quién debe atenderlo: \"Producto\", \"Instalaciones\", \"Personal\", \"Políticas\", \"Otros\". Que elija una. Si no elige, usá \"otros\".\nNÚMERO DE TICKET: si el caso es sobre una compra concreta, incluí el FCF. Si es general (ej. queja de personal), dejalo vacío.\nMención legal (escalamiento inmediato, sin pitch):\nSi el cliente menciona demanda, Defensoría del Consumidor, Fiscalía o FGR (Fiscalía General de la República), NO defiendas ni discutas la política. NO insistas. Reconocé con calma, tomá su contacto (obligatorio igual) y escalá de inmediato con tipo \"mencion_legal\". Si no da contacto, aplicá la misma regla: tomás nota pero no podés escalar sin forma de contactarlo.\nAl escalar:\nUsá Registrar_Caso_Soporte con: nombre, contacto, el motivo descrito, el tipo de escalamiento (pedido_supervisor / mencion_legal / entrega_incompleta / producto_danado / queja_personal / otros) y el área del menú. La herramienta te devuelve un número de caso.\nComunicáselo al cliente con formato de 4 dígitos con ceros a la izquierda: el caso 1 se lo decís como \"0001\", el 36 como \"0036\", el 191 como \"0191\". Si el número pasa de 9999, decilo tal cual sin ceros adelante.\nEjemplo: \"Listo, tu caso quedó registrado con el número 0007. Un asesor del área correspondiente te va a contactar. Guardá ese número para dar seguimiento.\"\nNUNCA confirmes un caso sin ejecutar Registrar_Caso_Soporte y recibir el número de vuelta.\nEn todos los escalamientos, mantené un tono calmado y empático. El objetivo no es ganar la discusión, es que el cliente se sienta escuchado y derivado a quien puede resolverlo.\n\nAntes de pasar cualquier texto del cliente a una herramienta (nombre, contacto, descripcion de items, motivo), quita las comillas simples (') y comillas dobles (\") del texto. Si el nombre del cliente trae un apostrofe (ej. O'Brien), registralo sin el apostrofe (OBrien). Esto evita errores al registrar en la base.\n\nMarcas y alcance (reglas estrictas)\nCalzados Djohn vende UNICAMENTE las marcas que devuelve Consultar_Catalogo (hoy: Dr. Martens, Converse y Vans). Nunca menciones, sugieras ni inventes otras marcas, aunque el cliente pregunte por una que no tenemos. Si piden una marca que no vendemos, decilo y ofrece buscar en el catalogo un estilo parecido de nuestras marcas.\nSolo atendes temas de la tienda: productos, precios, envios, cambios, devoluciones, compras y casos de soporte. Si el cliente pregunta otra cosa (peliculas, musica, tareas, temas personales), responde en una frase amable que solo podes ayudar con temas de Calzados Djohn y redirigi la conversacion a la tienda. No respondas el tema ajeno.\nNunca escribas en tu respuesta el texto de una llamada a herramienta (por ejemplo 'Calling ... with input'). Ejecuta la herramienta y responde solo con el resultado para el cliente."
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "666cad2b-48ac-4c35-a99d-b96943525e9a",
+      "name": "Jv - email parser",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1936,
+        -672
+      ],
+      "parameters": {
+        "jsCode": "const DIGITOS_VISIBLES = 3;   // cola visible del telefono. 0 = maximo anonimato.\n\n// ---------- Redaccion determinista de PII (correos + telefonos) ----------\nfunction enmascararCorreos(txt) {\n  if (!txt) return txt;\n  // conserva hasta 3 chars del local + dominio; enmascara el resto\n  return String(txt).replace(\n    /([A-Za-z0-9._%+-]{1,3})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\\.[A-Za-z]{2,})/g,\n    '$1***$2'\n  );\n}\nfunction enmascararTelefonos(txt) {\n  if (!txt) return txt;\n  // +503 opcional + numero SV de 8 digitos (empieza 2/6/7), separadores opcionales\n  const re = /(\\+503[\\s-]?)?([267](?:[\\s-]?\\d){7})/g;\n  return String(txt).replace(re, (m, pais, cuerpo) => {\n    const d = cuerpo.replace(/\\D/g, '');\n    if (d.length !== 8) return m;                 // no es telefono SV -> intacto\n    const vis = DIGITOS_VISIBLES > 0 ? d.slice(-DIGITOS_VISIBLES) : '';\n    const oc  = '*'.repeat(8 - (DIGITOS_VISIBLES > 0 ? DIGITOS_VISIBLES : 0));\n    const mascara = oc.slice(0, 4) + '-' + oc.slice(4) + vis;  // ****-*123\n    return (pais ? '+503 ' : '') + mascara;\n  });\n}\nfunction redactarPII(txt) {\n  // correos PRIMERO (para no romper emails con digitos), luego telefonos\n  return enmascararTelefonos(enmascararCorreos(txt || ''));\n}\n\n// ---------- Enmascarado de correo estilo slots (kev***@dominio) ----------\nfunction maskEmailSlot(correo) {\n  if (!correo || typeof correo !== 'string' || correo.indexOf('@') === -1) return null;\n  const [local, dominio] = correo.split('@');\n  return local.slice(0, 3) + '***@' + dominio;\n}\n\n// ---------- Parseo del JSON del extractor (con red de seguridad) ----------\nlet datos = {};\ntry {\n  let raw = String($json.text || '').trim();\n  raw = raw.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();  // limpia fences\n  datos = JSON.parse(raw);\n} catch (e) {\n  datos = { nombre: null, correo: null, correo_valido: false,\n            validacion: 'sin_extraccion', resumen: 'Extractor no disponible este turno' };\n}\n\n// ---------- Validacion determinista del correo (autoridad final) ----------\nconst correoCliente = datos.correo || null;\nconst REGEX_CORREO = /^[^\\s@,]+@[^\\s@,]+\\.[^\\s@,]{2,}$/;\nlet correo_valido = false;\nlet validacion = datos.validacion || 'ok';\nif (correoCliente) {\n  correo_valido = REGEX_CORREO.test(String(correoCliente).trim());\n  validacion = correo_valido ? 'correo_valido' : 'correo_invalido';\n} else if (!datos.validacion) {\n  validacion = 'sin_correo';\n}\n\n// ---------- slots_snapshot con correo enmascarado ----------\nconst slots_snapshot = {\n  nombre: datos.nombre || null,\n  correo: correo_valido ? maskEmailSlot(correoCliente) : null,\n};\n\n// ---------- Redaccion de la conversacion para el log auditable ----------\nconst input_redactado  = redactarPII($json.input_raw);\nconst output_redactado = redactarPII($json.output_raw);\n\nreturn [{\n  json: {\n    validacion,\n    correo_valido,                              // boolean -> el If usa \"is true\" (Convert types ON)\n    nombre: datos.nombre || null,\n    correo_mask: slots_snapshot.correo,\n    resumen: datos.resumen || null,\n    slots_snapshot: JSON.stringify(slots_snapshot),\n    input_redactado,\n    output_redactado,\n  }\n}];"
+      }
+    },
+    {
+      "id": "35555df8-e368-48da-b224-0d0a19f12e65",
+      "name": "Djava DataEntry",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1360,
+        -672
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Mensaje del cliente: {{ $('Telegram On Message Trigger').item.json.message.text }}\nRespuesta de Djanne: {{ $('Djanne AI Agent').item.json.output }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Sos un extractor de datos. Tu única tarea es analizar una interacción entre un cliente y la asistente Djanne, y devolver un objeto JSON con los datos extraídos.  DEVOLVÉS SOLO EL JSON. Sin explicaciones, sin markdown, sin ```json, sin texto antes o después. Solo el objeto JSON crudo.  El JSON debe tener EXACTAMENTE esta estructura:  { \"nombre\": string o null, \"correo\": string o null, \"correo_valido\": true o false, \"validacion\": string, \"resumen\": string }  Reglas para cada campo:  \"nombre\": el nombre que el cliente dio en ESTA o en interacciones previas visibles. Si no hay nombre, null. \"correo\": el correo COMPLETO que el cliente dio (sin enmascarar — el enmascarado lo hace otro paso). Si no dio correo, null. \"correo_valido\": true si el correo tiene formato válido (texto + \"@\" + dominio con punto, ej. nombre@dominio.com). false si el correo es inválido o incompleto. Si no hay correo, false. \"validacion\": una etiqueta corta del estado del turno. Valores posibles: \"correo_valido\" → el cliente dio un correo con formato correcto \"correo_invalido\" → el cliente dio un correo mal formado \"sin_correo\" → en este turno no se trató el correo \"consulta\" → el turno fue una consulta general (catálogo, políticas) \"ok\" → turno normal sin novedad Elegí la más representativa del turno. \"resumen\": UNA sola frase corta (máx ~15 palabras) que describa qué pasó en el turno. Ej: \"Cliente consultó catálogo gótico\", \"Cliente dio nombre y correo válido\".  Ejemplos:  Cliente: \"mi nombre es Kevin Alvarez\" Djanne: \"¡Hola Kevin! ¿Me compartís tu correo?\" → {\"nombre\":\"Kevin Alvarez\",\"correo\":null,\"correo_valido\":false,\"validacion\":\"sin_correo\",\"resumen\":\"Cliente dio su nombre\"}  Cliente: \"es kevin@gmail.com\" Djanne: \"¡Registrado! ¿En qué te ayudo?\" → {\"nombre\":\"Kevin\",\"correo\":\"kevin@gmail.com\",\"correo_valido\":true,\"validacion\":\"correo_valido\",\"resumen\":\"Cliente dio correo válido\"}  Cliente: \"tenés zapatos góticos?\" Djanne: \"Claro, tenemos Dr. Martens 1461 Mono...\" → {\"nombre\":null,\"correo\":null,\"correo_valido\":false,\"validacion\":\"consulta\",\"resumen\":\"Cliente consultó catálogo gótico\"}  Cliente: \"mi correo es kevin@@gmailcom\" Djanne: \"Ese correo parece incompleto, ¿me lo repetís?\" → {\"nombre\":null,\"correo\":\"kevin@@gmailcom\",\"correo_valido\":false,\"validacion\":\"correo_invalido\",\"resumen\":\"Cliente dio correo mal formado\"}"
+            }
+          ]
+        },
+        "batching": {}
+      }
+    },
+    {
+      "id": "bf424de0-5c9f-47c6-abaf-d137a994102d",
+      "name": "Conversation Logger",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2384,
+        -672
+      ],
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "logs",
+          "mode": "list",
+          "cachedResultName": "logs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "user_id": "={{ $('Telegram On Message Trigger').item.json.message.from.id }}",
+            "input": "={{ $json.input_redactado }}",
+            "output": "={{ $json.output_redactado }}",
+            "validacion": "={{ $json.validacion }}",
+            "resumen": "={{ $json.resumen }}",
+            "slots_snapshot": "={{ JSON.stringify({ nombre: $json.nombre, correo: $json.correo_mask }) }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_id",
+              "displayName": "user_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "input",
+              "displayName": "input",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "output",
+              "displayName": "output",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "validacion",
+              "displayName": "validacion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "slots_snapshot",
+              "displayName": "slots_snapshot",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "resumen",
+              "displayName": "resumen",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "creado_en",
+              "displayName": "creado_en",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "4ffb17f7-5d42-42cb-af32-67c9ca43ab27",
+      "name": "Djanne's answer to TG",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1712,
+        -408
+      ],
+      "parameters": {
+        "chatId": "={{ $('Telegram On Message Trigger').item.json.message.from.id }}",
+        "text": "={{ $json.output.replace(/[`*_~]/g, '') }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Bot"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "webhookId": "c3006e94-df01-49eb-b893-ff4c3f1f703b"
+    },
+    {
+      "id": "b13bb97a-f13e-47c8-8053-afa0aaa686e4",
+      "name": "If",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2160,
+        -672
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "be288bab-3aeb-41ed-ad14-cc5c6c7049f7",
+              "leftValue": "={{ $json.correo_valido }}",
+              "rightValue": "={{ true }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5693603d-4c3d-4d35-af93-9b845e78196f",
+      "name": "Registrar_Venta",
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        640,
+        128
+      ],
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "IMPRESCINDIBLE para cerrar cualquier compra. Sin esta herramienta la venta no queda registrada.\n\nRegistra una venta confirmada del cliente y genera el número de ticket fiscal (FCF). Usá esta herramienta SOLO cuando el cliente ya confirmó explícitamente que quiere proceder con la compra y ya tenés todos los datos: qué producto/talla, el monto total, y el nombre y contacto del cliente. Devuelve el número de ticket que debés comunicarle al cliente.",
+        "operation": "executeQuery",
+        "query": "INSERT INTO ventas (user_id, nombre, contacto, catalogo_id, cantidad, items, monto_base, iva, monto_total)\nVALUES (\n  '{{ $('Telegram On Message Trigger').item.json.message.from.id }}',\n  '{{ $fromAI(\"nombre\", \"nombre del cliente\") }}',\n  '{{ $fromAI(\"contacto\", \"correo o telefono del cliente\") }}',\n  {{ $fromAI(\"catalogo_id\", \"el id numerico del producto en el catalogo, obtenido de la herramienta Consultar_Catalogo\") }},\n  {{ $fromAI(\"cantidad\", \"cantidad de pares, normalmente 1\") }},\n  '{{ $fromAI(\"items\", \"descripcion legible de lo comprado, ej: 1x Vans Authentic Negro T44\") }}',\n  {{ $fromAI(\"monto_base\", \"base imponible sin IVA del producto solo: monto_total dividido 1.13, 2 decimales\") }},\n  {{ $fromAI(\"iva\", \"IVA: monto_total menos monto_base, 2 decimales\") }},\n  {{ $fromAI(\"monto_total\", \"precio final del PRODUCTO solo, sin envio\") }}\n)\nRETURNING numero_ticket;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      },
+      "notes": "Registra una venta confirmada del cliente y genera el número de ticket fiscal (FCF). Usá esta herramienta SOLO cuando el cliente ya confirmó explícitamente que quiere proceder con la compra y ya tenés todos los datos: qué producto/talla, el monto total, y el nombre y contacto del cliente. Devuelve el número de ticket que debés comunicarle al cliente.",
+      "notesInFlow": true
+    },
+    {
+      "id": "608c0635-623d-4e06-9fac-ad6cdd983b07",
+      "name": "Consultar_Venta",
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        768,
+        128
+      ],
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Consulta una venta por su número de ticket (formato FCF-000000). Usala SIEMPRE que el cliente mencione un ticket para consultar una compra, devolver o cambiar un producto. Devuelve los datos de la venta si existe, o vacío si no. Nunca proceses una devolución o cambio sin confirmar primero con esta herramienta que el ticket existe.",
+        "operation": "executeQuery",
+        "query": "SELECT id, numero_ticket, user_id, nombre, contacto, catalogo_id, cantidad, items, monto_total, estado, creado_en\nFROM ventas\nWHERE numero_ticket = '{{ $fromAI(\"numero_ticket\", \"el numero de ticket exacto que dio el cliente, formato FCF-000000\") }}'\n  AND cantidad > 0;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "98b83c1f-7aee-45be-82fc-84be5c5ff1be",
+      "name": "Procesar_Devolucion",
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        896,
+        128
+      ],
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Procesa la devolución de una compra cuando el cliente quiere que le devuelvan su dinero (reembolso). Registra la nota de crédito (venta en negativo) y envía el par devuelto a tratamiento, en una sola operación. Usala SOLO después de haber confirmado el ticket con Consultar_Venta y de que el cliente confirmó que quiere el reembolso de dinero (no un cambio por otro par). Necesitás: el id de la venta original, el número de ticket, el catalogo_id del producto, el monto total original, el user_id y el nombre del cliente.",
+        "operation": "executeQuery",
+        "query": "WITH nota_credito AS (\n  INSERT INTO ventas (user_id, nombre, contacto, catalogo_id, cantidad, items, monto_base, iva, monto_total, estado, venta_ref, comentario)\n  VALUES (\n    '{{ $('Telegram On Message Trigger').item.json.message.from.id }}',\n    '{{ $fromAI(\"nombre\", \"nombre del cliente\") }}',\n    '{{ $fromAI(\"contacto\", \"correo o telefono del cliente\") }}',\n    {{ $fromAI(\"catalogo_id\", \"el id del producto que se devuelve, obtenido de Consultar_Venta\") }},\n    -{{ $fromAI(\"cantidad\", \"cantidad de pares devueltos, normalmente 1\") }},\n    '{{ $fromAI(\"items\", \"descripcion del producto devuelto\") }}',\n    -{{ $fromAI(\"monto_base\", \"base imponible original: monto_total dividido 1.13, 2 decimales\") }},\n    -{{ $fromAI(\"iva\", \"IVA original: monto_total menos base, 2 decimales\") }},\n    -{{ $fromAI(\"monto_total\", \"monto total original de la venta que se reembolsa\") }},\n    'reembolsada',\n    {{ $fromAI(\"venta_ref\", \"el id numerico de la venta original, obtenido de Consultar_Venta\") }},\n    'Reembolso de {{ $fromAI(\"numero_ticket_original\", \"numero de ticket original, ej FCF-000005\") }}'\n  )\n  RETURNING id, catalogo_id, ABS(cantidad) AS cant\n)\nINSERT INTO devoluciones (numero_ticket_original, catalogo_id, cantidad, tipo, motivo)\nSELECT\n  '{{ $fromAI(\"numero_ticket_original\", \"numero de ticket original, ej FCF-000005\") }}',\n  catalogo_id,\n  cant,\n  'reembolso',\n  '{{ $fromAI(\"motivo\", \"razon de la devolucion, ej: defecto de fabrica\") }}'\nFROM nota_credito\nRETURNING id;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "88892bcb-0382-4d07-a10a-3142365ac018",
+      "name": "Registrar_Caso_Soporte",
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        1024,
+        128
+      ],
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Escala un caso a un supervisor o al área relevante cuando Djanne NO puede resolverlo ella misma (pedido explícito de supervisor tras insistencia, entrega incompleta, producto dañado sin querer cambio/reembolso, queja sobre personal, o mención legal). NO usar para reembolsos o cambios (esos los procesa Djanne). REQUISITO OBLIGATORIO: el cliente debe haber dado al menos un contacto (teléfono o correo); sin contacto NO escales ni uses esta herramienta. Devuelve el número de caso para comunicárselo al cliente.",
+        "operation": "executeQuery",
+        "query": "INSERT INTO casos_soporte (user_id, nombre, contacto, numero_ticket, motivo, tipo_escalamiento, area_precontexto)\nVALUES (\n  '{{ $('Telegram On Message Trigger').item.json.message.from.id }}',\n  '{{ $fromAI(\"nombre\", \"nombre del cliente, o Anonymous si no lo quiere dar\") }}',\n  '{{ $fromAI(\"contacto\", \"telefono o correo del cliente. OBLIGATORIO, sin esto no se escala\") }}',\n  NULLIF('{{ $fromAI(\"numero_ticket\", \"el FCF si el caso es sobre una compra, o dejar vacio si es general\") }}', ''),\n  '{{ $fromAI(\"motivo\", \"descripcion breve de lo que el cliente reporta o solicita\") }}',\n  '{{ $fromAI(\"tipo_escalamiento\", \"naturaleza del caso: pedido_supervisor, mencion_legal, entrega_incompleta, producto_danado, queja_personal, u otros\") }}',\n  '{{ $fromAI(\"area_precontexto\", \"area que eligio el cliente del menu: producto, instalaciones, personal, politicas, u otros\") }}'\n)\nRETURNING id;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "edbc82ab-8216-4a20-94c9-be2346063b4f",
+      "name": "Procesar_CambioDefecto",
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        1152,
+        128
+      ],
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Procesa un CAMBIO por DEFECTO DE FABRICA: el cliente recibio un par defectuoso y quiere un par de reposicion (NO su dinero de vuelta). Usar SOLO cuando el motivo es un defecto de fabrica. Para reembolsos de dinero usa Procesar_Devolucion. Para cambios voluntarios sin defecto (otra talla o modelo por gusto), NO uses esta herramienta: derivá el caso a un asesor.\n\nEn una sola operacion atomica registra las tres cosas: (1) anula la venta original con una nota de credito, (2) despacha el par nuevo de reposicion con un ticket FCF nuevo, y (3) registra que el par viejo defectuoso regresa a tratamiento en subsidiaria. El par viejo NO reingresa al inventario; el par nuevo SI descuenta stock.\n\nAntes de llamar esta herramienta DEBES tener del cliente, via Consultar_Venta: el numero de ticket original (FCF), el id de la venta original (para venta_ref), y el catalogo_id y monto del par que se devuelve. La reposicion por defecto es del MISMO modelo y talla (mismo catalogo_id y mismo monto que el original, diferencia cero).\n\nSi el par de reposicion esta agotado, la operacion falla completa y no anula nada: informa al cliente que ese modelo no esta disponible y ofrece coordinar con un asesor.\n\nLa herramienta devuelve el numero_ticket_reposicion: el FCF nuevo del par de reemplazo. Comunicaselo al cliente como su nuevo comprobante. NO inventes numeros de seguimiento de envio, etiquetas ni correos: la coordinacion fisica del envio y la recoleccion la hace un asesor de logistica, no vos.",
+        "operation": "executeQuery",
+        "query": "WITH nota_credito AS (\n  -- 1) Anula la venta original: nota de credito en negativo.\n  --    cantidad<0 => el trigger NO toca stock (el par viejo no reingresa).\n  INSERT INTO ventas (user_id, nombre, contacto, catalogo_id, cantidad, items, monto_base, iva, monto_total, estado, venta_ref, comentario)\n  VALUES (\n    '{{ $('Telegram On Message Trigger').item.json.message.from.id }}',\n    '{{ $fromAI(\"nombre\", \"nombre del cliente\") }}',\n    '{{ $fromAI(\"contacto\", \"correo o telefono del cliente\") }}',\n    {{ $fromAI(\"catalogo_id_viejo\", \"el id del producto que se devuelve (el par defectuoso), obtenido de Consultar_Venta\") }},\n    -{{ $fromAI(\"cantidad\", \"cantidad de pares que se cambian, normalmente 1\") }},\n    '{{ $fromAI(\"items_viejo\", \"descripcion del par que se devuelve, ej: 1x Vans Authentic negro T42\") }}',\n    -{{ $fromAI(\"monto_base_viejo\", \"base imponible original del par devuelto: monto_total_viejo dividido 1.13, 2 decimales\") }},\n    -{{ $fromAI(\"iva_viejo\", \"IVA original del par devuelto: monto_total_viejo menos base, 2 decimales\") }},\n    -{{ $fromAI(\"monto_total_viejo\", \"monto total original del par que se devuelve, ej 60.00\") }},\n    'anulada_por_cambio',\n    {{ $fromAI(\"venta_ref\", \"el id numerico de la venta original, obtenido de Consultar_Venta\") }},\n    'Anulacion por cambio del {{ $fromAI(\"numero_ticket_original\", \"numero de ticket original, ej FCF-000005\") }}'\n  )\n  RETURNING catalogo_id AS cat_viejo, ABS(cantidad) AS cant\n),\nreposicion AS (\n  -- 2) Despacha el par nuevo: venta positiva, ligada a la original.\n  --    cantidad>0 => el trigger descuenta stock (o bloquea si no hay).\n  INSERT INTO ventas (user_id, nombre, contacto, catalogo_id, cantidad, items, monto_base, iva, monto_total, estado, venta_ref, comentario)\n  VALUES (\n    '{{ $('Telegram On Message Trigger').item.json.message.from.id }}',\n    '{{ $fromAI(\"nombre\", \"nombre del cliente\") }}',\n    '{{ $fromAI(\"contacto\", \"correo o telefono del cliente\") }}',\n    {{ $fromAI(\"catalogo_id_nuevo\", \"el id del par de reposicion que se despacha, obtenido de Consultar_Catalogo (mismo id que el viejo si es mismo modelo)\") }},\n    {{ $fromAI(\"cantidad\", \"cantidad de pares que se cambian, normalmente 1\") }},\n    '{{ $fromAI(\"items_nuevo\", \"descripcion del par de reposicion, ej: 1x Vans Authentic negro T42\") }}',\n    {{ $fromAI(\"monto_base_nuevo\", \"base imponible del par nuevo: monto_total_nuevo dividido 1.13, 2 decimales\") }},\n    {{ $fromAI(\"iva_nuevo\", \"IVA del par nuevo: monto_total_nuevo menos base, 2 decimales\") }},\n    {{ $fromAI(\"monto_total_nuevo\", \"precio del par de reposicion, ej 60.00 si es mismo modelo\") }},\n    'validada',\n    {{ $fromAI(\"venta_ref\", \"el id numerico de la venta original, obtenido de Consultar_Venta\") }},\n    'Reposicion por cambio del {{ $fromAI(\"numero_ticket_original\", \"numero de ticket original, ej FCF-000005\") }}'\n  )\n  RETURNING numero_ticket AS fcf_nuevo\n)\n-- 3) Acta logistica: el par viejo regresa y va a subsidiaria. Sin dinero, sin stock.\nINSERT INTO devoluciones (numero_ticket_original, catalogo_id, cantidad, tipo, motivo)\nSELECT\n  '{{ $fromAI(\"numero_ticket_original\", \"numero de ticket original, ej FCF-000005\") }}',\n  nota_credito.cat_viejo,\n  nota_credito.cant,\n  'cambio',\n  '{{ $fromAI(\"motivo\", \"razon del cambio, ej: defecto de fabrica en un zapato del par\") }}'\nFROM nota_credito, reposicion\nRETURNING (SELECT fcf_nuevo FROM reposicion) AS numero_ticket_reposicion;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "f5b1d80b-8ce4-41e1-b787-bcc910190e8f",
+      "name": "Edit Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1712,
+        -672
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "993a9a6d-0cfd-4199-aa30-7c170b9399a8",
+              "name": "input_raw",
+              "value": "={{ $('Telegram On Message Trigger').item.json.message.text }}",
+              "type": "string"
+            },
+            {
+              "id": "fc74414b-186c-4b70-a179-e7837bac41ab",
+              "name": "output_raw",
+              "value": "={{ $('Djanne AI Agent').item.json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "21162f2b-0468-4b32-b0df-02eb7818b07c",
+      "name": "Marca_Inicio",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -352,
+        -96
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6962a66c-c8fc-4d5b-859e-ca194bf4b90e",
+              "name": "inicio_ms",
+              "value": "={{ $now.toMillis() }}",
+              "type": "number"
+            },
+            {
+              "id": "5efec2e8-8c72-4c6b-8a2c-6b308caca005",
+              "name": "inicio",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "ba9124bf-ac5f-41ff-b1bb-a3e0e46a532b",
+      "name": "Metrica_Exito",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1936,
+        -480
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f120809f-9826-4488-b353-55c36d95a8cf",
+              "name": "Fecha",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}",
+              "type": "string"
+            },
+            {
+              "id": "8ff8b491-06e3-4368-afa6-d206a2927c38",
+              "name": "Execution_ID",
+              "value": "={{ $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "e7436d23-d022-4c00-b001-01ee3dab8c63",
+              "name": "Workflow",
+              "value": "={{ $workflow.name }}",
+              "type": "string"
+            },
+            {
+              "id": "62ec1ed7-c8ac-4354-8f3a-be19d5261852",
+              "name": "Estado",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "id": "19d9571a-dcad-45a1-a2be-ac52af8dbdac",
+              "name": "Inicio",
+              "value": "={{ $('Marca_Inicio').item.json.inicio }}",
+              "type": "string"
+            },
+            {
+              "id": "73805226-99fb-4788-b56e-85806b3afbe9",
+              "name": "Fin",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}",
+              "type": "string"
+            },
+            {
+              "id": "e4bcbc28-12b0-4e91-ad36-6cf9318cb6ec",
+              "name": "Duracion_s",
+              "value": "={{ Math.round(($now.toMillis() - $('Marca_Inicio').item.json.inicio_ms) / 10) / 100 }}",
+              "type": "number"
+            },
+            {
+              "id": "e47cd4c0-ccc3-4d9c-a5d0-8671d2ece54a",
+              "name": "Nodo",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "6a1409d1-cc2c-4094-899e-5f60e866f536",
+              "name": "Error",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "47b1b095-7aa4-4a2e-9220-e0c648741ca3",
+              "name": "User_ID",
+              "value": "={{ $('Telegram On Message Trigger').item.json.message.from.id }}",
+              "type": "string"
+            },
+            {
+              "id": "d66ffee9-948e-4c17-83d0-7cdc6289cfb3",
+              "name": "Registrado_por",
+              "value": "FLUJO_PRINCIPAL",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1599240b-9a6b-4dfb-9893-b7dfc721092f",
+      "name": "Metrica_Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1936,
+        -164
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f120809f-9826-4488-b353-55c36d95a8cf",
+              "name": "Fecha",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}",
+              "type": "string"
+            },
+            {
+              "id": "8ff8b491-06e3-4368-afa6-d206a2927c38",
+              "name": "Execution_ID",
+              "value": "={{ $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "e7436d23-d022-4c00-b001-01ee3dab8c63",
+              "name": "Workflow",
+              "value": "={{ $workflow.name }}",
+              "type": "string"
+            },
+            {
+              "id": "21e08995-7250-40e9-8a86-69b9df155523",
+              "name": "Estado",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "id": "19d9571a-dcad-45a1-a2be-ac52af8dbdac",
+              "name": "Inicio",
+              "value": "={{ $('Marca_Inicio').item.json.inicio }}",
+              "type": "string"
+            },
+            {
+              "id": "73805226-99fb-4788-b56e-85806b3afbe9",
+              "name": "Fin",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}",
+              "type": "string"
+            },
+            {
+              "id": "e4bcbc28-12b0-4e91-ad36-6cf9318cb6ec",
+              "name": "Duracion_s",
+              "value": "={{ Math.round(($now.toMillis() - $('Marca_Inicio').item.json.inicio_ms) / 10) / 100 }}",
+              "type": "number"
+            },
+            {
+              "id": "19af0762-17f9-4ab3-ac6b-fdde3a69f2e6",
+              "name": "Nodo",
+              "value": "={{ $prevNode.name }}",
+              "type": "string"
+            },
+            {
+              "id": "60775a7c-a875-4ff3-b9a4-01e104af27f0",
+              "name": "Error",
+              "value": "={{ typeof $json.error === 'object' ? ($json.error.message || JSON.stringify($json.error)) : ($json.error || 'Error sin mensaje') }}",
+              "type": "string"
+            },
+            {
+              "id": "47b1b095-7aa4-4a2e-9220-e0c648741ca3",
+              "name": "User_ID",
+              "value": "={{ $('Telegram On Message Trigger').item.json.message.from.id }}",
+              "type": "string"
+            },
+            {
+              "id": "1b3c6c9e-baad-43b0-9951-718a855967f7",
+              "name": "Registrado_por",
+              "value": "FLUJO_PRINCIPAL",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3b3e98e9-eff0-4b02-b23a-951e493f6c83",
+      "name": "Registrar_Metrica",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2160,
+        -260
+      ],
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "",
+          "cachedResultName": "Djanne_Metricas_Sheets"
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      }
+    },
+    {
+      "id": "6a4d1d70-f860-4263-9210-0fc92d39d472",
+      "name": "Gemini Brain",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        128
+      ],
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash",
+        "options": {}
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "name": "Google Gemini"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "36329ae6-c572-4736-a8b3-91e8af5875dc",
+      "name": "DeepSeek Extractor",
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        1432,
+        -448
+      ],
+      "parameters": {
+        "model": "deepseek-flash",
+        "options": {}
+      },
+      "credentials": {
+        "deepSeekApi": {
+          "name": "DeepSeek"
+        }
+      }
+    },
+    {
+      "id": "59e7671e-69f4-4d9e-a0d4-cf74164ac445",
+      "name": "Mensaje_Contingencia",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1712,
+        -192
+      ],
+      "parameters": {
+        "chatId": "={{ $('Telegram On Message Trigger').item.json.message.chat.id }}",
+        "text": "Disculpá, en este momento tenemos mucha demanda y no pude procesar tu mensaje. Escribime de nuevo en un par de minutos o, si es urgente, un asesor de Calzados Djohn te va a atender en breve.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Bot"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "f0e3ba77-7e01-4153-86c2-470150d96923"
+    },
+    {
+      "id": "075a6c7b-ba4f-4696-a4f8-578e801a1887",
+      "name": "Valida_Respuesta",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1424,
+        -216
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a5ccbd14-61ae-4530-957b-d46b03ad2f0e",
+              "leftValue": "={{ /^\\s*Calling\\s+\\S+\\s+with input/i.test($json.output ?? '') || !($json.output ?? '').trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5d2237ed-33ba-41d0-b1d5-cd22937198ec",
+      "name": "Metrica_Respuesta_Invalida",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1936,
+        28
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3b93e1db-f358-487a-8dd2-124815f96f6f",
+              "name": "Fecha",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}",
+              "type": "string"
+            },
+            {
+              "id": "67d2b85e-302f-41ab-9cb6-c335cbdcc424",
+              "name": "Execution_ID",
+              "value": "={{ $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "3d9cf594-656e-4cff-98e2-9f2f4700e0de",
+              "name": "Workflow",
+              "value": "={{ $workflow.name }}",
+              "type": "string"
+            },
+            {
+              "id": "ea88d8de-0cc0-45b9-a2ee-92628617db27",
+              "name": "Estado",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "id": "1165a7e2-9ce8-4515-b45b-acb01e898852",
+              "name": "Inicio",
+              "value": "={{ $('Marca_Inicio').item.json.inicio }}",
+              "type": "string"
+            },
+            {
+              "id": "6469895e-009a-44ae-9dca-3c2b55e5fed4",
+              "name": "Fin",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}",
+              "type": "string"
+            },
+            {
+              "id": "1433317b-e64a-439e-baa8-ff23d4f51a82",
+              "name": "Duracion_s",
+              "value": "={{ Math.round(($now.toMillis() - $('Marca_Inicio').item.json.inicio_ms) / 10) / 100 }}",
+              "type": "number"
+            },
+            {
+              "id": "da213d23-1e91-4214-aa9f-18fb86501491",
+              "name": "Nodo",
+              "value": "Valida_Respuesta",
+              "type": "string"
+            },
+            {
+              "id": "a26de80c-59c1-411a-b822-ce343046f2e5",
+              "name": "Error",
+              "value": "={{ ($json.output ?? '').trim() ? 'Llamada a herramienta devuelta como texto (no ejecutada)' : 'Respuesta vacía del agente' }}",
+              "type": "string"
+            },
+            {
+              "id": "90a9dd18-e20c-4856-bef1-46232f655bf5",
+              "name": "User_ID",
+              "value": "={{ $('Telegram On Message Trigger').item.json.message.from.id }}",
+              "type": "string"
+            },
+            {
+              "id": "c8940906-a41f-4614-bd09-ce389818924b",
+              "name": "Registrado_por",
+              "value": "FLUJO_PRINCIPAL",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "PoliticaDevolucion": {
+      "ai_tool": [
+        [
+          {
+            "node": "Djanne AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PoliticaEnvio": {
+      "ai_tool": [
+        [
+          {
+            "node": "Djanne AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram On Message Trigger": {
+      "main": [
+        [
+          {
+            "node": "Marca_Inicio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ConsultaCatalogo": {
+      "ai_tool": [
+        [
+          {
+            "node": "Djanne AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq GPT120B Brain": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Djanne AI Agent",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "ChatContextMemory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Djanne AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Djanne AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Valida_Respuesta",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Djava DataEntry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Metrica_Error",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mensaje_Contingencia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Djava DataEntry": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jv - email parser": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Djanne's answer to TG": {
+      "main": [
+        [
+          {
+            "node": "Metrica_Exito",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Metrica_Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Conversation Logger",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Conversation Logger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar_Venta": {
+      "ai_tool": [
+        [
+          {
+            "node": "Djanne AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar_Venta": {
+      "ai_tool": [
+        [
+          {
+            "node": "Djanne AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar_Devolucion": {
+      "ai_tool": [
+        [
+          {
+            "node": "Djanne AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar_Caso_Soporte": {
+      "ai_tool": [
+        [
+          {
+            "node": "Djanne AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar_CambioDefecto": {
+      "ai_tool": [
+        [
+          {
+            "node": "Djanne AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Jv - email parser",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marca_Inicio": {
+      "main": [
+        [
+          {
+            "node": "Djanne AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrica_Exito": {
+      "main": [
+        [
+          {
+            "node": "Registrar_Metrica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrica_Error": {
+      "main": [
+        [
+          {
+            "node": "Registrar_Metrica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Brain": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Djanne AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Extractor": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Djava DataEntry",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valida_Respuesta": {
+      "main": [
+        [
+          {
+            "node": "Djanne's answer to TG",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Metrica_Respuesta_Invalida",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mensaje_Contingencia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrica_Respuesta_Invalida": {
+      "main": [
+        [
+          {
+            "node": "Registrar_Metrica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "timezone": "America/El_Salvador",
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "tags": [],
+  "active": false
+}

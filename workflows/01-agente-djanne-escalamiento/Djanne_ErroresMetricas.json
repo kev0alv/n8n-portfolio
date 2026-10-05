@@ -1,0 +1,180 @@
+{
+  "name": "Djanne_ErroresMetricas",
+  "nodes": [
+    {
+      "id": "da72a74f-786f-4d6d-b439-a132a170500d",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "809a6398-72a9-455d-abe7-bcfcf634df5c",
+      "name": "Alerta Guardia",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        -140
+      ],
+      "parameters": {
+        "chatId": "TU_CHAT_ID_DE_TELEGRAM",
+        "text": "=Alerta de error en Djanne\n\nWorkflow: {{ String($json.workflow.name ?? '').replace(/[`*_~\\[\\]]/g, ' ') }}\nNodo: {{ String($json.execution.lastNodeExecuted ?? '').replace(/[`*_~\\[\\]]/g, ' ') }}\nMensaje: {{ String($json.execution.error.message ?? '').replace(/[`*_~\\[\\]]/g, ' ') }}\nEjecucion: {{ $json.execution.id }}\nFecha y hora: {{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Bot"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "c324c2ef-fc1c-470d-af67-5cf82757bb4f",
+      "name": "Metrica_Error_Global",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        260,
+        120
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ee6d861d-41e7-4793-8e95-4f2d5346c87e",
+              "name": "Fecha",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}",
+              "type": "string"
+            },
+            {
+              "id": "91af173a-165e-41d3-973e-2f46ce57bc5e",
+              "name": "Execution_ID",
+              "value": "={{ $json.execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "b05bd4ed-0cb0-4554-9a16-5a453f1a2a50",
+              "name": "Workflow",
+              "value": "={{ $json.workflow.name }}",
+              "type": "string"
+            },
+            {
+              "id": "7964a198-913a-47ed-b4b2-857c6bb96067",
+              "name": "Estado",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "id": "b44f6fa0-87ff-4906-a5e9-97f6884bff97",
+              "name": "Inicio",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "f7e16170-46af-4872-bf30-1af81ee63dd0",
+              "name": "Fin",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}",
+              "type": "string"
+            },
+            {
+              "id": "2971bc3e-77a2-4edf-89e3-4db45b547a97",
+              "name": "Duracion_s",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "1b70b304-f872-43ed-8fe2-a20aacf8e7a4",
+              "name": "Nodo",
+              "value": "={{ $json.execution.lastNodeExecuted }}",
+              "type": "string"
+            },
+            {
+              "id": "eca2f89e-f71d-48fa-8896-48e6ce4cc8f5",
+              "name": "Error",
+              "value": "={{ $json.execution.error.message }}",
+              "type": "string"
+            },
+            {
+              "id": "dcab19d7-a4f3-4384-885d-0856aa04ea27",
+              "name": "User_ID",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "593bf89d-c892-40b0-99a4-4c14d2decbc8",
+              "name": "Registrado_por",
+              "value": "ERROR_HANDLER",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a37a5cb3-66d7-4435-ab8f-af2e5415f849",
+      "name": "Registrar Metrica",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        520,
+        120
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "",
+          "cachedResultName": "Djanne_Metricas_Sheets"
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Alerta Guardia",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Metrica_Error_Global",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrica_Error_Global": {
+      "main": [
+        [
+          {
+            "node": "Registrar Metrica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/El_Salvador"
+  },
+  "pinData": {},
+  "tags": [],
+  "active": false
+}

@@ -1,0 +1,376 @@
+{
+  "name": "Flujo_Registro_Contacto",
+  "nodes": [
+    {
+      "id": "f38b4e48-fae6-4b86-841c-c708adbe4be0",
+      "name": "GSheet_Consulta_Historico",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        208,
+        0
+      ],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "Registro de Aplicaciones - Reclutamiento"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "DB"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Email",
+              "lookupValue": "={{ $json.body.email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "f47e63d9-baef-46bc-a20c-b6958b358ca0",
+      "name": "Webhook a Lovable",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "registro-contacto",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "alwaysOutputData": false,
+      "webhookId": "a1fd23c0-e7e4-4f0e-9a5e-71881891ef1d"
+    },
+    {
+      "id": "7af5557b-6aca-416a-bfb4-1274c9045416",
+      "name": "Code_Calcula_Duplicado_91dias",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const webhookData = $('Webhook a Lovable').item.json.body;\nconst nombre = webhookData.nombre;\nconst email = webhookData.email;\nconst area = webhookData.area;\nconst comentario = webhookData.comentario;  // ✅ corregido: era .mensaje, el campo real es .comentario\nconst previas = $input.all().map(i => i.json).filter(row => row.Email);\nlet duplicado = false;\nlet fechaMasReciente = null;\nfor (const row of previas) {\n  if (row.Email !== email || row.Área !== area) continue;\n  const fechaAplico = new Date(row.Fecha.replace(' ', 'T'));\n  const diasPasados = (Date.now() - fechaAplico.getTime()) / (1000 * 60 * 60 * 24);\n  if (diasPasados < 91) {\n    duplicado = true;\n    if (!fechaMasReciente || fechaAplico > fechaMasReciente) fechaMasReciente = fechaAplico;\n  }\n}\nlet estado, mensaje;\nif (duplicado) {\n  const habilitado = new Date(fechaMasReciente);\n  habilitado.setDate(habilitado.getDate() + 91);\n  const habilitadoStr = habilitado.toLocaleDateString('es-SV');\n  estado = 'Rechazado - Duplicado';\n  mensaje = `Gracias por tu interés en trabajar con nosotros, revisamos tuviste una aplicación recientemente, si aún no has recibido un correo de seguimiento, por favor espera a que nuestro equipo de reclutamiento procese tu solicitud, de otra manera, favor vuelve a intentar a partir de ${habilitadoStr}.`;\n} else {\n  estado = 'Pendiente';\n  mensaje = `Gracias por tu aplicación, recibirás un correo electrónico de confirmación a ${email}. Nuestro equipo de reclutamiento se estará contactando contigo en los próximos 10 días de negocio.`;\n}\n\nreturn [{ json: { nombre, email, area, comentario, duplicado, estado, mensaje } }];"
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "7eda6f8b-8e00-4893-bf2c-dfd10662c61f",
+      "name": "IF_Es_Duplicado",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        624,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cdfd6149-d337-4a30-8ed4-6db367b7f9b3",
+              "leftValue": "={{ $json.duplicado }}",
+              "rightValue": "={{ true }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "alwaysOutputData": false
+    },
+    {
+      "id": "ce1d3dd0-d653-4077-b60b-c115b73edd67",
+      "name": "Sheets_Guarda_Aplicacion",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        832,
+        96
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "Registro de Aplicaciones - Reclutamiento"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "DB"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Fecha": "={{ $now.format('yyyy-MM-dd HH:mm') }}",
+            "Email": "={{ $('Code_Calcula_Duplicado_91dias').item.json.email }}",
+            "Área": "={{ $('Code_Calcula_Duplicado_91dias').item.json.area }}",
+            "Comentario": "={{ $('Code_Calcula_Duplicado_91dias').item.json.comentario }}",
+            "Estado": "={{ $('Code_Calcula_Duplicado_91dias').item.json.estado }}",
+            "Nombre": "={{ $('Code_Calcula_Duplicado_91dias').item.json.nombre }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Nombre",
+              "displayName": "Nombre",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Área",
+              "displayName": "Área",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Comentario",
+              "displayName": "Comentario",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "id": "4a5d9028-4805-408b-9be3-48ace3d1e08e",
+      "name": "Gmail_Confirmacion",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        96
+      ],
+      "parameters": {
+        "sendTo": "={{ $('Code_Calcula_Duplicado_91dias').item.json.email }}",
+        "subject": "Confirmación de aplicación - Kodigo",
+        "message": "=Hola {{ $('Code_Calcula_Duplicado_91dias').item.json.nombre }},\n\n{{ $('Code_Calcula_Duplicado_91dias').item.json.mensaje }}\n\nSaludos,\nEquipo de Reclutamiento",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail"
+        }
+      },
+      "webhookId": "ea356abe-bb88-40c2-8db8-e780ce340da7"
+    },
+    {
+      "id": "84ace128-33fd-46b6-8ec1-2a9f8d4eaa22",
+      "name": "Respuesta en formulario",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1264,
+        -80
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ duplicado: $json.duplicado, estado: $json.estado, mensaje: $json.mensaje }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "a0619b86-223a-44b4-b4b4-8b80b63ad5c9",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        -288
+      ],
+      "parameters": {
+        "content": "Flujo_Registro_Contacto\n\nRecibe aplicaciones desde el formulario de Lovable vía Webhook. Verifica si el mismo correo aplicó a la misma área en los últimos 91 días (regla de \"un intento por trimestre\"). Si es duplicado, rechaza sin guardar. Si es nuevo, registra en Google Sheets y envía correo de confirmación. Responde siempre a Lovable con { duplicado, estado, mensaje } para mostrar el resultado en pantalla.",
+        "width": 800
+      }
+    },
+    {
+      "id": "915f6249-be32-4deb-b0c7-0ca90400a31f",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        400,
+        176
+      ],
+      "parameters": {
+        "content": "Regla de duplicado\n\nCompara correo + área. Si la misma combinación aplicó hace menos de 91 días, se marca como duplicado y no se guarda. Si el correo aplica a un área distinta, se guarda igual aunque no hayan pasado los 91 días — el bloqueo es solo por combinación exacta correo+área.",
+        "height": 416,
+        "width": 150,
+        "color": 5
+      }
+    },
+    {
+      "id": "073c67a1-14ea-446d-98b4-738e5e619ec9",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        144
+      ],
+      "parameters": {
+        "content": "Formulario (Lovable)\n\nURL pública: https://kvflujoregistrocontacto.lovable.app",
+        "height": 384,
+        "width": 150,
+        "color": 3
+      }
+    }
+  ],
+  "connections": {
+    "GSheet_Consulta_Historico": {
+      "main": [
+        [
+          {
+            "node": "Code_Calcula_Duplicado_91dias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook a Lovable": {
+      "main": [
+        [
+          {
+            "node": "GSheet_Consulta_Historico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code_Calcula_Duplicado_91dias": {
+      "main": [
+        [
+          {
+            "node": "IF_Es_Duplicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF_Es_Duplicado": {
+      "main": [
+        [
+          {
+            "node": "Respuesta en formulario",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sheets_Guarda_Aplicacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets_Guarda_Aplicacion": {
+      "main": [
+        [
+          {
+            "node": "Gmail_Confirmacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail_Confirmacion": {
+      "main": [
+        [
+          {
+            "node": "Respuesta en formulario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "pinData": {},
+  "tags": [],
+  "active": false
+}
