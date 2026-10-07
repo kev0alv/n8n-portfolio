@@ -1,0 +1,182 @@
+{
+  "id": "opsErrorWf000001",
+  "name": "04 · Error handler (logs + alerts on any failure)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "03769b3e-73ca-53df-baf7-3a5d334d55ae",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -260
+      ],
+      "parameters": {
+        "content": "## Error workflow\nEvery other workflow points here (`Settings → Error workflow`). Any failed production run is written to `workflow_errors` (shown on the dashboard) and, if configured, sent to Telegram.\n\nTest it by activating **99 · Failure drill**.",
+        "width": 420,
+        "height": 240,
+        "color": 7
+      }
+    },
+    {
+      "id": "20d2e10f-0c60-523b-ab15-d5d1d41e8fb2",
+      "name": "On workflow error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "5f2bf817-757f-5f71-b2ac-f6fc2c80c6f5",
+      "name": "Log error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_errors (workflow, node, message, execution_id, execution_url)\nVALUES ($1, $2, $3, $4, $5)\nRETURNING workflow, node, message, execution_url;",
+        "options": {
+          "queryReplacement": "={{ [ $json.workflow.name, $json.execution.lastNodeExecuted ?? '', $json.execution.error?.message ?? 'unknown error', String($json.execution.id ?? ''), $json.execution.url ?? '' ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pgOpsWriter00001",
+          "name": "Postgres ops (writer)"
+        }
+      }
+    },
+    {
+      "id": "e3e2dd97-10ea-58bd-8d9f-4d3cb5d8d989",
+      "name": "Format message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const e = $input.first().json;\nreturn [{ json: {\n  text: `🚨 n8n workflow failed\\nWorkflow: ${e.workflow}\\nNode: ${e.node}\\nError: ${e.message}\\n${e.execution_url ?? ''}`,\n  telegram: Boolean($env.TELEGRAM_CHAT_ID),\n} }];"
+      }
+    },
+    {
+      "id": "3203ca58-e37a-5b43-9713-46236d1fc5d3",
+      "name": "Telegram configured?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "25b1d2de-8446-56c2-8d11-57a4cf9565c7",
+              "leftValue": "={{ $json.telegram }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "994ebd97-ee67-50b4-b17c-7fc95f3db27f",
+      "name": "Send Telegram alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        880,
+        -80
+      ],
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "telegramDemo0001",
+          "name": "Telegram alerts bot"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "On workflow error": {
+      "main": [
+        [
+          {
+            "node": "Log error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log error": {
+      "main": [
+        [
+          {
+            "node": "Format message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format message": {
+      "main": [
+        [
+          {
+            "node": "Telegram configured?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram configured?": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "tags": []
+}

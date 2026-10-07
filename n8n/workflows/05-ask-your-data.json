@@ -1,0 +1,171 @@
+{
+  "id": "opsAskDataWf001",
+  "name": "05 · Ask your data (AI agent, natural language → SQL)",
+  "active": true,
+  "nodes": [
+    {
+      "id": "03769b3e-73ca-53df-baf7-3a5d334d55ae",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -300
+      ],
+      "parameters": {
+        "content": "## Ask your data\nA chat interface where anyone can ask questions in plain English or Spanish (\"Which stage is the bottleneck this week?\"). The agent writes SQL, runs it on a **read-only** Postgres role (`default_transaction_read_only`, 10 s timeout) and answers with the numbers.\n\nNeeds `GROQ_API_KEY` in `.env`. Open the chat from the **Open chat** button, or the public URL of the chat trigger.",
+        "width": 460,
+        "height": 300,
+        "color": 7
+      }
+    },
+    {
+      "id": "a5cb434a-771f-5479-bd5b-045b12470c47",
+      "name": "Chat",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "public": true,
+        "mode": "hostedChat",
+        "initialMessages": "Hi! Ask me anything about the operation: bottlenecks, SLA breaches, throughput, a specific order…",
+        "options": {
+          "title": "Ask your ops data",
+          "subtitle": "n8n · Postgres · Groq",
+          "loadPreviousSession": "memory"
+        }
+      },
+      "webhookId": "d317edb4-9a08-5134-949a-15bd7ffb9a98"
+    },
+    {
+      "id": "a5c0b241-159f-5cfb-bfc5-204befd42c90",
+      "name": "Data analyst agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "options": {
+          "systemMessage": "You are the operations data analyst for an order-fulfilment team. You answer questions in plain language (reply in the user's language) using ONLY data you query from PostgreSQL with the run_sql tool. Never invent numbers.\n\nProcess: every order (case) moves through these stages in order:\nreceived -> validated -> qa_review -> packed -> shipped -> delivered.\n\nTables and views (PostgreSQL 16, read-only access):\n- stages(stage, seq, sla_minutes)  -- SLA per stage; delivered has no SLA\n- process_events(case_id, stage, event_ts, source, payload jsonb, ingested_at)  -- raw events, one per case and stage\n- v_case_stage_durations(case_id, stage, seq, sla_minutes, entered_at, exited_at, is_open, minutes_in_stage)\n- v_open_cases(case_id, current_stage, entered_at, minutes_in_stage, sla_minutes, breached)\n- v_stage_bottlenecks(seq, stage, sla_minutes, completed_7d, avg_minutes, p50_minutes, p95_minutes, sla_breach_pct, open_now, open_breached)\n- v_throughput_hourly(hour, cases_started, cases_delivered)\n- v_case_lead_time(case_id, started_at, delivered_at, lead_time_hours)\n- alerts(created_at, case_id, stage, minutes_in_stage, sla_minutes, severity)\n- workflow_errors(created_at, workflow, node, message, execution_id)\n\nRules:\n- Prefer the v_ views; they already contain the business logic.\n- Write one SELECT per tool call. Always add LIMIT 50 or less to row-level queries.\n- Timestamps are timestamptz; use now() for relative periods.\n- Answer with the key number first, then one or two sentences of context. Show a small table only when it helps.\n- If a question cannot be answered from this data, say so.",
+          "maxIterations": 8
+        }
+      }
+    },
+    {
+      "id": "05f9e6b0-9721-57f2-9991-30da8f989829",
+      "name": "Groq model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        120,
+        240
+      ],
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {
+          "temperature": 0
+        }
+      },
+      "credentials": {
+        "groqApi": {
+          "id": "groqDemo00000001",
+          "name": "Groq"
+        }
+      }
+    },
+    {
+      "id": "112594fb-536e-5a95-9172-162618030385",
+      "name": "Chat memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        300,
+        240
+      ],
+      "parameters": {
+        "contextWindowLength": 10
+      }
+    },
+    {
+      "id": "aba9a7a5-4a15-5c8c-8f1b-146ea9999e4b",
+      "name": "run_sql",
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        480,
+        240
+      ],
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Runs one read-only PostgreSQL SELECT against the operations warehouse and returns the rows.",
+        "operation": "executeQuery",
+        "query": "={{ $fromAI('sql', 'One read-only PostgreSQL SELECT statement', 'string') }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pgOpsAnalyst0001",
+          "name": "Postgres ops (read-only analyst)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Chat": {
+      "main": [
+        [
+          {
+            "node": "Data analyst agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Data analyst agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Data analyst agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "run_sql": {
+      "ai_tool": [
+        [
+          {
+            "node": "Data analyst agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "opsErrorWf000001",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "tags": []
+}

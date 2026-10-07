@@ -1,0 +1,140 @@
+{
+  "id": "opsSimulatorWf01",
+  "name": "02 · Simulate operations (event generator)",
+  "active": true,
+  "nodes": [
+    {
+      "id": "03769b3e-73ca-53df-baf7-3a5d334d55ae",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -260
+      ],
+      "parameters": {
+        "content": "## Event simulator\nEvery minute: reads open cases, advances some of them, opens a few new ones, and posts the events to the **same public API** as any real source (`/webhook/events`).\n\n`qa_review` advances slowly on purpose, so it turns into the bottleneck. Deactivate this workflow to freeze the data.",
+        "width": 420,
+        "height": 280,
+        "color": 7
+      }
+    },
+    {
+      "id": "d70bef81-3226-54df-99c8-870ec345e63a",
+      "name": "Every minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "286df237-7f59-5ebc-ac6d-d0121f96efc5",
+      "name": "Read open cases",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  (SELECT coalesce(max(substring(case_id FROM 5)::int), 0)\n     FROM process_events WHERE case_id ~ '^ORD-[0-9]+$') AS last_case_no,\n  (SELECT coalesce(json_agg(json_build_object('case_id', case_id, 'stage', current_stage)), '[]')\n     FROM v_open_cases) AS open_cases;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pgOpsAnalyst0001",
+          "name": "Postgres ops (read-only analyst)"
+        }
+      }
+    },
+    {
+      "id": "77df0ad2-8e67-5596-b8d5-f9cd709452ce",
+      "name": "Advance cases",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Moves the simulated operation forward by one minute.\n// Each open case advances to its next stage with a per-stage probability.\n// qa_review is deliberately slow, so it becomes the bottleneck.\nconst NEXT = { received: 'validated', validated: 'qa_review', qa_review: 'packed', packed: 'shipped', shipped: 'delivered' };\nconst P_ADVANCE = { received: 0.25, validated: 0.12, qa_review: 0.03, packed: 0.10, shipped: 0.02 };\nconst NEW_CASES = Number($env.SIMULATOR_NEW_CASES_PER_RUN ?? 3);\n\nconst { last_case_no, open_cases } = $input.first().json;\nconst events = [];\n\nfor (const c of open_cases) {\n  if (NEXT[c.stage] && Math.random() < P_ADVANCE[c.stage]) {\n    events.push({ case_id: c.case_id, stage: NEXT[c.stage], source: 'simulator' });\n  }\n}\nfor (let i = 1; i <= NEW_CASES; i++) {\n  events.push({\n    case_id: `ORD-${String(Number(last_case_no) + i).padStart(5, '0')}`,\n    stage: 'received',\n    source: 'simulator',\n    payload: { channel: ['web', 'chat', 'phone'][Math.floor(Math.random() * 3)] },\n  });\n}\nreturn [{ json: { events } }];"
+      }
+    },
+    {
+      "id": "39058f0d-5841-5da3-b596-cbd79e9a3180",
+      "name": "POST to ingest API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n:5678/webhook/events",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ events: $json.events }) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "Every minute": {
+      "main": [
+        [
+          {
+            "node": "Read open cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read open cases": {
+      "main": [
+        [
+          {
+            "node": "Advance cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Advance cases": {
+      "main": [
+        [
+          {
+            "node": "POST to ingest API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "opsErrorWf000001",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "tags": []
+}
