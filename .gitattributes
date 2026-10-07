@@ -1,0 +1,5 @@
+# Shell scripts run inside Linux containers: keep LF even when cloned on Windows.
+*.sh  text eol=lf
+*.js  text eol=lf
+*.sql text eol=lf
+*.yml text eol=lf

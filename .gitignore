@@ -1,3 +1,7 @@
+# Secrets: never commit
 .env
+secrets/*
+!secrets/README.md
+
 node_modules/
 *.log
