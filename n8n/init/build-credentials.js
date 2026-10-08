@@ -38,11 +38,22 @@ function serviceAccount(id, name, file) {
   });
 }
 
+// Operational database (always present: the password is required in .env).
+credentials.push({
+  id: 'pgStrideSoul0001',
+  name: 'Postgres - stride_soul',
+  type: 'postgres',
+  data: {
+    host: 'postgres', port: 5432, database: 'stride_soul',
+    user: 'sole_app', password: process.env.SOLE_APP_PASSWORD,
+    ssl: 'disable', allowUnauthorizedCerts: false,
+  },
+});
+
 apiKey('deepSeekMain0001', 'DeepSeek', 'deepSeekApi', 'apiKey', process.env.DEEPSEEK_API_KEY);
 apiKey('groqFallback0001', 'Groq (fallback)', 'groqApi', 'apiKey', process.env.GROQ_API_KEY);
 apiKey('telegramSole0001', 'Telegram - Sole bot', 'telegramApi', 'accessToken', process.env.TELEGRAM_BOT_TOKEN);
-serviceAccount('bqWriter00000001', 'BigQuery - writer', 'bq-writer.json');
-serviceAccount('bqAnalyst0000001', 'BigQuery - analyst (read-only)', 'bq-analyst.json');
+serviceAccount('bigQuery00000001', 'BigQuery - n8n-bigquery', 'bq-service-account.json');
 
 fs.writeFileSync(out, JSON.stringify(credentials));
 console.log(`Credentials ready: ${credentials.map(c => c.name).join(', ') || 'none'}`);

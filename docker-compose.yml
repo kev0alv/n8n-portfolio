@@ -4,9 +4,11 @@
 # puts executions on a Redis queue; workers pull and run them. Add workers with:
 #   docker compose up -d --scale n8n-worker=3
 #
-# Business data lives in BigQuery (see bigquery/). Postgres here is only n8n's
-# own database (workflows, credentials, execution history). Redis is the queue
-# and the agent's chat memory.
+# Postgres holds two databases: "stride_soul" (the store: sales, stock,
+# support cases, events, metrics) and "n8n" (n8n's own workflows and history).
+# BigQuery (sandbox, free) is the analytics copy, rebuilt every night by n8n.
+# Redis is the queue and the agent's chat memory. ngrok gives Telegram the
+# public HTTPS address it needs to reach the bot.
 name: stride-soul
 
 x-n8n-env: &n8n-env
@@ -45,10 +47,18 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: n8n
+      SOLE_APP_PASSWORD: ${SOLE_APP_PASSWORD}
+      TZ: ${TZ:-America/El_Salvador}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro   # first boot only
+      - ./postgres/sql:/sql:ro
+      - ./postgres/tests:/tests:ro
+    ports:
+      - "127.0.0.1:5432:5432"   # reachable from your PC only (pgAdmin, DBeaver)
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d n8n"]
+      # TCP only opens after the init scripts finish (they run on a socket-only server)
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER} -d stride_soul"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -74,6 +84,7 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      SOLE_APP_PASSWORD: ${SOLE_APP_PASSWORD}
     entrypoint: ["/bin/sh", "/init/import.sh"]
     volumes:
       - ./n8n/init:/init:ro
@@ -125,6 +136,21 @@ services:
     entrypoint: ["/bin/sh", "/init/setup.sh"]
     volumes:
       - ./n8n/init:/init:ro
+    depends_on:
+      n8n:
+        condition: service_healthy
+
+  # Public HTTPS tunnel for the Telegram webhook. Enabled by COMPOSE_PROFILES=tunnel
+  # in .env once NGROK_AUTHTOKEN and NGROK_DOMAIN are filled in.
+  ngrok:
+    image: ngrok/ngrok:3
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    command: ["http", "n8n:5678", "--url=${NGROK_DOMAIN:-}", "--log=stdout"]
+    ports:
+      - "127.0.0.1:4040:4040"   # ngrok inspector: http://localhost:4040
     depends_on:
       n8n:
         condition: service_healthy
