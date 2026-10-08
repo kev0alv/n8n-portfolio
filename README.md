@@ -1,57 +1,58 @@
-# Stride & Soul · Sole, an AI sales agent on n8n + BigQuery
+# Stride & Soul · Sole, an AI sales agent on n8n, Postgres and BigQuery
 
 **Sole** is the Telegram sales assistant of **Stride & Soul**, a footwear
 store for urban subcultures (punk, goth, emo, hardcore, metal, straight
 edge). Sole answers catalog and policy questions, registers sales with a
 receipt, processes refunds and exchanges, and escalates to a person when
 it should. Every step of every conversation is recorded as a process
-event in **BigQuery**, so the funnel, its bottlenecks and the health of
-each workflow show up in **Looker Studio** and can be queried in plain
-English.
+event; a nightly pipeline copies the data to **BigQuery**, where the
+funnel, its bottlenecks and the health of each workflow show up in
+**Looker Studio** and can be queried in plain English.
 
-> Status: **phase 3 of 8, infrastructure.** BigQuery engine and Docker
-> stack are written; the stack has been booted and verified. Workflows
-> are built next. See [Roadmap](#roadmap).
+The whole stack runs on a laptop with Docker and costs nothing.
+
+> Status: **phase 3 of 8, infrastructure.** Store database and Docker stack
+> are tested (13 functional + 2 concurrency tests pass). Workflows are
+> built next. See [Roadmap](#roadmap).
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  TG[Telegram<br/>bot Sole] --> N8N
+  TG[Telegram<br/>bot Sole] -->|ngrok HTTPS| N8N
   subgraph Docker
     N8N[n8n main] -->|Redis queue| W[n8n workers]
     W --> AG[Sales agent<br/>DeepSeek, Groq fallback]
     AG --> MEM[(Redis<br/>chat memory)]
-    W --> MET[Register_Metric<br/>sub-workflow]
-    EW[Error Workflow] --> ALERT[Telegram on-call]
-    PG[(Postgres<br/>n8n internals only)]
+    AG -->|tools: sale, refund,<br/>exchange, support case| PG[(Postgres<br/>stride_soul)]
+    W --> MET[Register_Metric<br/>sub-workflow] --> PG
+    EW[Error Workflow] --> PG
+    EW --> ALERT[Telegram on-call]
+    ETL[Nightly load<br/>02:00] --> PG
   end
-  AG -->|catalog, policies| BQ
-  AG -->|sale, refund, exchange,<br/>support case| SP[Stored procedures]
-  SP --> BQ[(BigQuery<br/>stride_soul)]
-  MET --> BQ
-  EW --> BQ
+  ETL -->|load jobs, full reload<br/>+ views| BQ[(BigQuery sandbox<br/>stride_soul)]
   BQ --> LS[Looker Studio]
   ASK[Ask-your-data agent<br/>read-only] --> BQ
 ```
 
-**Why the business rules live in BigQuery stored procedures.** BigQuery
-has no sequences, triggers, CHECK constraints or row locks. Each operation
-(sale, refund, exchange, support case) is one transaction inside a
-procedure. When two operations touch the same table at once, BigQuery
-aborts one and n8n retries it, which is what prevents selling the last
-pair twice or issuing the same receipt number twice. A `counters` table
-replaces Postgres sequences.
+| Layer | Where | Why |
+|---|---|---|
+| Operations: sales, stock, receipts, support cases | **Postgres** | Real transactions: a trigger with a row lock prevents selling the last pair twice, a sequence issues receipt numbers, CHECK constraints keep amounts coherent |
+| Events, metrics, audit log | Postgres | One source of truth, written by every workflow |
+| Analytics | **BigQuery** (free sandbox) | Rebuilt every night from Postgres. The sandbox deletes tables after 60 days and blocks INSERT/UPDATE; a full reload makes both irrelevant |
+| Dashboard | Looker Studio on BigQuery views | Free |
 
 ## Repository
 
 | Path | What |
 |---|---|
-| `bigquery/` | Dataset, tables, seed data, stored procedures, views and isolated tests, run in order `01`–`05` |
-| `docker-compose.yml` | n8n in queue mode (main + workers), Redis, Postgres for n8n itself |
+| `postgres/sql/` | Store schema, seed data (40 products, policies) and transactional functions |
+| `postgres/tests/` | 13 functional tests + 2 concurrency tests on a throwaway database |
+| `bigquery/` | Analytics dataset and views |
+| `docker-compose.yml` | n8n in queue mode (main + workers), Redis, Postgres, ngrok |
 | `n8n/init/` | Boot scripts: credentials from `.env` + `secrets/`, workflow import, owner account, publishing |
 | `n8n/workflows/` | Workflow JSON, the source of truth (imported on every start) |
-| `secrets/` | Service-account keys, git-ignored |
+| `secrets/` | Service-account key, git-ignored |
 | `docs/SETUP.md` | Step-by-step setup on Windows |
 
 ## Quick start
@@ -59,11 +60,12 @@ replaces Postgres sequences.
 ```powershell
 copy .env.example .env      # fill it in, see docs/SETUP.md
 docker compose up -d
+docker compose exec postgres sh /tests/run.sh
 ```
 
 Open http://localhost:5678. Full guide: [docs/SETUP.md](docs/SETUP.md).
 
-## Data model
+## Store database
 
 | Table | Purpose |
 |---|---|
@@ -73,10 +75,15 @@ Open http://localhost:5678. Full guide: [docs/SETUP.md](docs/SETUP.md).
 | `returns` | Returned pairs (never back to sellable stock) |
 | `support_cases` | Escalations; contact is mandatory |
 | `conversation_events` | Stage-by-stage funnel: start → catalog → data validated → sale / support |
-| `audit_logs` | One row per turn, personal data masked |
+| `audit_logs` | One row per turn, e-mails and phones masked |
 | `execution_metrics` | One row per workflow execution: status, duration, failing node |
 
-Views: `v_catalog_available`, `v_sales_daily`, `v_stage_durations`,
+Functions the agent's tools call: `register_sale`, `process_refund`,
+`process_exchange`, `open_support_case`. Errors start with a code
+(`VALIDATION`, `NOT_FOUND`, `OUT_OF_STOCK`, `ALREADY_PROCESSED`) so the
+agent can explain them.
+
+BigQuery views: `v_stock_position`, `v_sales_daily`, `v_stage_durations`,
 `v_stage_bottlenecks`, `v_funnel_daily`, `v_funnel_conversion`,
 `v_execution_kpis`, `v_support_queue`.
 
@@ -86,15 +93,16 @@ Views: `v_catalog_available`, `v_sales_daily`, `v_stage_durations`,
 |---|---|---|
 | 1. Discovery | Scope, accounts, brand | ✅ |
 | 2. Orchestration | Architecture map | ✅ |
-| 3. Infrastructure | BigQuery engine + tests, Docker stack | 🟡 written; BigQuery tests pending a GCP project |
-| 4. Build | Workflows: intake, agent, transaction tools, logger, metrics, error handler, analyst agent | ☐ |
-| 5. Testing | Test table with execution ids, incl. concurrent last-pair sale | ☐ |
+| 3. Infrastructure | Store database + tests, Docker stack, BigQuery dataset | 🟡 database and stack tested; BigQuery dataset pending |
+| 4. Build | Workflows: intake, agent, transaction tools, logger, metrics, error handler, nightly load, analyst agent | ☐ |
+| 5. Testing | Test table with execution ids | ☐ |
 | 6. Dashboard | Looker Studio on BigQuery views | ☐ |
 | 7. Documentation | Reference doc per workflow, SOP, screenshots | ☐ |
 | 8. Delivery | Demo script for interviews | ☐ |
 
 ## Privacy
 
-Telegram user ids are salted and hashed before they reach BigQuery.
-Audit logs mask e-mails and phone numbers. Full contact data is stored only
-where it is operationally needed (receipts and support cases).
+Telegram user ids are salted and hashed before they are stored. Audit logs
+mask e-mails and phone numbers. Full contact data is stored only where it
+is operationally needed (receipts and support cases) and never leaves
+Postgres: the BigQuery copy has no names, contacts or conversation text.

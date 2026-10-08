@@ -7,6 +7,9 @@
 
 CREATE TEMP TABLE results (n serial, test text, expected text, got text, passed boolean);
 
+-- Note: a query does not see rows written by a function it calls (same snapshot),
+-- so each operation runs first and is verified in a separate statement.
+
 -- Runs a statement that must fail and records whether it failed with the expected code.
 CREATE FUNCTION pg_temp.expect_error(p_test text, p_code text, p_sql text) RETURNS void
 LANGUAGE plpgsql AS $$
@@ -18,7 +21,7 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 CREATE FUNCTION pg_temp.check(p_test text, p_expected text, p_got text, p_ok boolean) RETURNS void
-LANGUAGE sql AS $$ INSERT INTO results (test, expected, got, passed) VALUES (p_test, p_expected, p_got, p_ok) $$;
+LANGUAGE sql AS $$ INSERT INTO results (test, expected, got, passed) VALUES (p_test, p_expected, coalesce(p_got, 'NULL'), coalesce(p_ok, false)) $$;
 
 -- T1 valid sale: receipt issued, stock -1, tax split, shipping charged for 1 pair
 SELECT pg_temp.check('T1 valid sale',
@@ -47,14 +50,16 @@ SELECT pg_temp.expect_error('T5 unknown product', 'NOT_FOUND',
   $$SELECT register_sale('t_user5', 'Test', 'buyer@example.com', 9999, 1)$$);
 
 -- T6 refund: credit note linked to the original, stock NOT restored
+SELECT credit_note_ticket AS refund_note, refunded_amount AS refund_amount
+FROM process_refund('ss-000001', 'test refund') \gset
 SELECT pg_temp.check('T6 refund (credit note, stock unchanged)',
-  'credit note for SS-000001, -$88, stock 8',
-  format('credit note for %s, -$%s, stock %s', original_ticket, refunded_amount,
-         (SELECT stock FROM catalog WHERE product_id = 40)),
-  original_ticket = 'SS-000001' AND refunded_amount = 88
-    AND (SELECT stock FROM catalog WHERE product_id = 40) = 8
-    AND (SELECT total_amount FROM sales WHERE ticket_no = credit_note_ticket) = -88)
-FROM process_refund('ss-000001', 'test refund');
+  'credit note -88.00 for SS-000001, original refunded, stock 8',
+  format('credit note %s for %s, original %s, stock %s', n.total_amount, n.sale_ref_ticket, o.status, c.stock),
+  :refund_amount = 88 AND n.total_amount = -88 AND n.quantity = -1 AND n.sale_ref_ticket = 'SS-000001'
+    AND o.status = 'refunded' AND c.stock = 8
+    AND EXISTS (SELECT 1 FROM returns r WHERE r.original_ticket = 'SS-000001' AND r.type = 'refund'))
+FROM sales n, sales o, catalog c
+WHERE n.ticket_no = :'refund_note' AND o.ticket_no = 'SS-000001' AND c.product_id = 40;
 
 -- T7 the same receipt cannot be refunded twice
 SELECT pg_temp.expect_error('T7 double refund', 'ALREADY_PROCESSED',
@@ -62,22 +67,26 @@ SELECT pg_temp.expect_error('T7 double refund', 'ALREADY_PROCESSED',
 
 -- T8 exchange: new pair taken from stock, both receipts linked, difference computed
 SELECT ticket_no AS exch_ticket FROM register_sale('t_user8', 'Test', 'buyer@example.com', 38, 1) \gset
-SELECT pg_temp.check('T8 exchange', 'new pair stock 7 -> 6, difference +15',
-  format('new pair stock -> %s, difference %s', (SELECT stock FROM catalog WHERE product_id = 39), price_difference),
-  (SELECT stock FROM catalog WHERE product_id = 39) = 6 AND price_difference = 15
-    AND (SELECT status FROM sales WHERE ticket_no = :'exch_ticket') = 'exchanged')
-FROM process_exchange(:'exch_ticket', 39, 'test exchange');
+SELECT new_ticket AS exch_new, price_difference AS exch_diff
+FROM process_exchange(:'exch_ticket', 39, 'test exchange') \gset
+SELECT pg_temp.check('T8 exchange', 'new pair stock 7 -> 6, difference 15.00, original exchanged',
+  format('new pair stock -> %s, difference %s, original %s', c.stock, :'exch_diff', o.status),
+  c.stock = 6 AND :exch_diff = 15 AND o.status = 'exchanged' AND n.sale_ref_ticket = :'exch_ticket'
+    AND EXISTS (SELECT 1 FROM returns r WHERE r.original_ticket = :'exch_ticket' AND r.type = 'exchange'))
+FROM catalog c, sales o, sales n
+WHERE c.product_id = 39 AND o.ticket_no = :'exch_ticket' AND n.ticket_no = :'exch_new';
 
 -- T9 support case without contact is rejected
 SELECT pg_temp.expect_error('T9 case without contact', 'VALIDATION',
   $$SELECT open_support_case('t_user9', 'Test', '  ', 'missing laces', 'incomplete_delivery', 'product', NULL)$$);
 
 -- T10 valid support case: anonymous name, label 0001
+SELECT case_id AS case_id, case_label AS case_label
+FROM open_support_case('t_user10', '', '+503 7000 0000', 'wants a supervisor', 'supervisor_request', NULL, NULL) \gset
 SELECT pg_temp.check('T10 valid support case', 'label 0001, Anonymous, area other',
-  format('label %s, %s, area %s', case_label,
-         (SELECT customer_name FROM support_cases sc WHERE sc.case_id = o.case_id), triage_area),
-  case_label = '0001' AND triage_area = 'other')
-FROM open_support_case('t_user10', '', '+503 7000 0000', 'wants a supervisor', 'supervisor_request', NULL, NULL) o;
+  format('label %s, %s, area %s', :'case_label', customer_name, triage_area),
+  :'case_label' = '0001' AND customer_name = 'Anonymous' AND triage_area = 'other' AND NOT attended)
+FROM support_cases WHERE case_id = :case_id;
 
 -- T11 unknown escalation type
 SELECT pg_temp.expect_error('T11 unknown escalation type', 'VALIDATION',

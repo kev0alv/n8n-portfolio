@@ -1,11 +1,7 @@
 # secrets/
 
-Put the two BigQuery service-account keys here. Everything in this folder
-except this README is git-ignored.
+Everything in this folder except this README is git-ignored.
 
-| File | Service account | Roles |
+| File | What | How to get it |
 |---|---|---|
-| `bq-writer.json` | `n8n-writer` | BigQuery Data Editor + BigQuery Job User |
-| `bq-analyst.json` | `n8n-analyst` | BigQuery Data Viewer + BigQuery Job User |
-
-See `docs/SETUP.md`, step 4.
+| `bq-service-account.json` | Key of the `n8n-bigquery` service account (BigQuery Data Editor + BigQuery Job User) | `docs/SETUP.md`, step 4 |

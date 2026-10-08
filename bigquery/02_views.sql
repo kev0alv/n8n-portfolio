@@ -1,14 +1,18 @@
 -- =====================================================================
 -- Stride & Soul — analytics views (Looker Studio and the analyst agent
 -- read these; they hold the business logic so nobody re-writes it).
--- Run 4 of 5. Safe to re-run.
+-- Run 2 of 2, and re-run by the nightly n8n load. Safe to re-run.
 -- =====================================================================
 
--- Products the sales agent may offer: only what is in stock.
-CREATE OR REPLACE VIEW stride_soul.v_catalog_available AS
-SELECT product_id, model, brand, type, subculture, size_range, color, price, stock
-FROM stride_soul.catalog
-WHERE stock > 0;
+-- Stock position per product, with what sold in the last 30 days.
+CREATE OR REPLACE VIEW stride_soul.v_stock_position AS
+SELECT
+  c.product_id, c.brand, c.model, c.color, c.subculture, c.type, c.price, c.stock,
+  IFNULL(SUM(IF(s.quantity > 0 AND s.created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY),
+                s.quantity, 0)), 0) AS pairs_sold_30d
+FROM stride_soul.catalog c
+LEFT JOIN stride_soul.sales s USING (product_id)
+GROUP BY c.product_id, c.brand, c.model, c.color, c.subculture, c.type, c.price, c.stock;
 
 -- Daily sales, refunds and exchanges.
 CREATE OR REPLACE VIEW stride_soul.v_sales_daily AS
