@@ -2,7 +2,7 @@
 
 > Documento interno de trabajo para Kevin y para la próxima sesión de Claude.
 > Está en español a propósito: el resto del repo está en inglés.
-> Última actualización: 2026-10-10, fase 3: infraestructura probada en la laptop; falta la prueba aislada del load job.
+> Última actualización: 2026-10-10, fase 3 completa: infraestructura y carga a BigQuery probadas en la laptop. Siguiente: fase 4.
 
 ---
 
@@ -201,7 +201,7 @@ caídos que dan contingencia, simulacro de fallo, agente analista intentando esc
 | Riesgo | Plan |
 |---|---|
 | ~~El SQL de BigQuery nunca se ejecutó~~ | ✅ Validado el 2026-10-10 (paso 6.1) |
-| Carga nocturna en el sandbox: el nodo de BigQuery de n8n inserta por streaming, que el sandbox **no permite** | Usar HTTP Request a `jobs.insert` (load job con upload multipart NDJSON) usando la credencial de la cuenta de servicio. **Probar aislado antes de construir el workflow.** |
+| ~~Carga nocturna en el sandbox: el nodo de BigQuery de n8n inserta por streaming, que el sandbox **no permite**~~ | ✅ Probado el 2026-10-10. HTTP Request `POST /upload/bigquery/v2/projects/{p}/jobs?uploadType=multipart` (cuerpo raw `multipart/related`: metadatos JSON + NDJSON, `WRITE_TRUNCATE`), credencial `googleApi` con `httpNode: true` y scope `bigquery`; luego GET del job. `catalog`: 40 filas, `state=DONE`; recargar no duplica. Evidencia: ejecución 1 (CLI, proceso main) y ejecución 2 (manual desde el editor, `Worker started execution 2`), job `job_4cet_Zlzz-3o5eqQDOdoZIzbEouf`, `badRecords=0`. Postgres arma el NDJSON con `string_agg(json_build_object(...))` y timestamps `YYYY-MM-DD HH24:MI:SS.US UTC`. |
 | DeepSeek con tools: en n8n 2.3.5 el modo thinking fallaba con herramientas | Probar con n8n 2.42.4 y el nodo nativo `DeepSeek Chat Model`, con una sola llamada aislada. Si falla, usar el modelo sin thinking. |
 | `$('Nodo')` en Code node se colgaba en Kodigo | Sin probar en Docker. Mientras tanto, Code nodes solo con `$json`. |
 | Python no está disponible en Code node (el runner interno no trae Python) | Usar JavaScript |
@@ -220,6 +220,8 @@ caídos que dan contingencia, simulacro de fallo, agente analista intentando esc
 | Healthcheck de Postgres | `pg_isready` por socket responde antes de que terminen los scripts de inicio | Verificar por TCP (`-h 127.0.0.1`) |
 | Healthcheck de n8n | En Docker Desktop (Windows), `localhost` dentro del contenedor resuelve a `::1` y n8n solo escucha en IPv4: queda *unhealthy* y el worker nunca arranca | `wget` a `http://127.0.0.1:5678/healthz/readiness` |
 | BigQuery sandbox | Sin INSERT/UPDATE ni streaming; tablas expiran a los 60 días | Postgres opera; BigQuery se recarga completo cada noche |
+| Credencial `googleApi` en HTTP Request | Por defecto (`httpNode: false`) el nodo HTTP Request no la puede usar | `build-credentials.js` la crea con `httpNode: true` y `scopes: https://www.googleapis.com/auth/bigquery` |
+| `n8n execute` (CLI) | No soporta queue mode: corre en el proceso main | Solo para pruebas; las ejecuciones reales van por la cola |
 
 ## 10. Reglas de seguridad
 

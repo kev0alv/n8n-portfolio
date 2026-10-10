@@ -32,8 +32,10 @@ function serviceAccount(id, name, file) {
       region: 'global',
       inpersonate: false,
       delegatedEmail: '',
-      httpNode: false,
-      scopes: '',
+      // The nightly load calls the BigQuery REST API from an HTTP Request node
+      // (load jobs: the sandbox rejects the BigQuery node's streaming inserts).
+      httpNode: true,
+      scopes: 'https://www.googleapis.com/auth/bigquery',
     },
   });
 }
