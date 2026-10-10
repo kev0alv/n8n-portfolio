@@ -104,7 +104,8 @@ services:
     volumes:
       - n8n_data:/home/node/.n8n
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz/readiness || exit 1"]
+      # 127.0.0.1, not localhost: inside the container localhost resolves to ::1 and n8n listens on IPv4 only
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz/readiness || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 60

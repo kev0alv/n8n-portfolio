@@ -2,7 +2,7 @@
 
 > Documento interno de trabajo para Kevin y para la próxima sesión de Claude.
 > Está en español a propósito: el resto del repo está en inglés.
-> Última actualización: 2026-10-08, fase 3 (infraestructura) en curso.
+> Última actualización: 2026-10-10, fase 3: infraestructura probada en la laptop; falta la prueba aislada del load job.
 
 ---
 
@@ -87,7 +87,7 @@ flowchart LR
 |---|---|---|
 | Base Postgres `stride_soul` (esquema, seed, funciones) | ✅ probada | 13/13 pruebas funcionales y 2/2 de concurrencia, corridas por Claude en un contenedor en la nube |
 | Stack Docker (n8n queue mode, worker, Redis, Postgres, ngrok) | ✅ probado | Arranque limpio, importación de credenciales, creación del owner, publicación de workflows, worker ejecutando desde la cola |
-| BigQuery `bigquery/01` y `02` | ⚠️ **escrito, sin ejecutar** | Claude no tiene acceso al proyecto; Kevin lo corre en BigQuery Studio |
+| BigQuery `bigquery/01` y `02` | ✅ ejecutado | 2026-10-10 en BigQuery Studio: `01` SUCCESS (7 declaraciones: dataset + 6 tablas), `02` SUCCESS (8 vistas) |
 | Proyecto GCP `stride-soul`, sandbox, sin facturación | ✅ | Captura con la etiqueta "Zona de pruebas" |
 | Cuenta de servicio `n8n-bigquery` con BigQuery Data Editor y Job User | ✅ | Captura de IAM |
 | Llave JSON | ✅ en `C:\Users\skaci\stride-soul-secrets\bq-service-account.json` | Captura del explorador |
@@ -111,7 +111,7 @@ flowchart LR
 
 ## 6. Pasos pendientes de Kevin, en orden
 
-### 6.1 Terminar el paso 5: dataset en BigQuery (en curso)
+### 6.1 Terminar el paso 5: dataset en BigQuery ✅ (2026-10-10)
 
 1. Copiar el contenido de
    https://github.com/kev0alv/n8n-portfolio/blob/claude/vibrant-planck-2cz97w/bigquery/01_dataset_and_tables.sql
@@ -200,7 +200,7 @@ caídos que dan contingencia, simulacro de fallo, agente analista intentando esc
 
 | Riesgo | Plan |
 |---|---|
-| El SQL de BigQuery nunca se ejecutó | Se valida en el paso 6.1 |
+| ~~El SQL de BigQuery nunca se ejecutó~~ | ✅ Validado el 2026-10-10 (paso 6.1) |
 | Carga nocturna en el sandbox: el nodo de BigQuery de n8n inserta por streaming, que el sandbox **no permite** | Usar HTTP Request a `jobs.insert` (load job con upload multipart NDJSON) usando la credencial de la cuenta de servicio. **Probar aislado antes de construir el workflow.** |
 | DeepSeek con tools: en n8n 2.3.5 el modo thinking fallaba con herramientas | Probar con n8n 2.42.4 y el nodo nativo `DeepSeek Chat Model`, con una sola llamada aislada. Si falla, usar el modelo sin thinking. |
 | `$('Nodo')` en Code node se colgaba en Kodigo | Sin probar en Docker. Mientras tanto, Code nodes solo con `$json`. |
@@ -218,6 +218,7 @@ caídos que dan contingencia, simulacro de fallo, agente analista intentando esc
 | Cookie de sesión | Es `Secure`; curl no la manda por http a un host que no sea localhost | `setup.sh` la lee de `Set-Cookie` y la envía a mano |
 | `WEBHOOK_URL` | Obsoleta | `N8N_WEBHOOK_URL` |
 | Healthcheck de Postgres | `pg_isready` por socket responde antes de que terminen los scripts de inicio | Verificar por TCP (`-h 127.0.0.1`) |
+| Healthcheck de n8n | En Docker Desktop (Windows), `localhost` dentro del contenedor resuelve a `::1` y n8n solo escucha en IPv4: queda *unhealthy* y el worker nunca arranca | `wget` a `http://127.0.0.1:5678/healthz/readiness` |
 | BigQuery sandbox | Sin INSERT/UPDATE ni streaming; tablas expiran a los 60 días | Postgres opera; BigQuery se recarga completo cada noche |
 
 ## 10. Reglas de seguridad
