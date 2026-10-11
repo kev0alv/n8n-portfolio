@@ -1,0 +1,314 @@
+{
+  "id": "ssErrorHandler06",
+  "name": "06 Error Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "06000000-0000-4000-8000-000000000001",
+      "name": "On_Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Error Trigger payload -> execution_metrics row (+ fields for the alert).\n// When the failing node is the trigger itself, n8n sends \"trigger\" instead of \"execution\".\nconst e = $json.execution || { error: $json.trigger && $json.trigger.error, mode: 'trigger' };\nconst w = $json.workflow || {};\nconst err = e.error || {};\nreturn { json: {\n  execution_id: String(e.id ?? 'n/a'),\n  workflow: w.name || w.id || 'unknown',\n  status: 'error',\n  started_at: null,                       // the Error Trigger does not include it\n  finished_at: new Date().toISOString(),\n  node: e.lastNodeExecuted || (err.node && err.node.name) || null,\n  error: err.message || err.description || 'unknown error',\n  user_hash: null,\n  registered_by: 'ERROR_HANDLER',\n  execution_url: e.url || null,\n  mode: e.mode || null,\n} };"
+      },
+      "id": "06000000-0000-4000-8000-000000000002",
+      "name": "Build_Error_Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ssRegisterMetr05"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "execution_id": "={{ $json.execution_id }}",
+            "workflow": "={{ $json.workflow }}",
+            "status": "={{ $json.status }}",
+            "started_at": "={{ $json.started_at }}",
+            "finished_at": "={{ $json.finished_at }}",
+            "node": "={{ $json.node }}",
+            "error": "={{ $json.error }}",
+            "user_hash": "={{ $json.user_hash }}",
+            "registered_by": "={{ $json.registered_by }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "execution_id",
+              "displayName": "execution_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "workflow",
+              "displayName": "workflow",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "started_at",
+              "displayName": "started_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "finished_at",
+              "displayName": "finished_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "node",
+              "displayName": "node",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "user_hash",
+              "displayName": "user_hash",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "registered_by",
+              "displayName": "registered_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "06000000-0000-4000-8000-000000000003",
+      "name": "Register_Metric",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        520,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT coalesce(max(value) FILTER (WHERE key = 'alert_email_to'), '')         AS email_to,\n       coalesce(max(value) FILTER (WHERE key = 'alert_telegram_chat_id'), '') AS chat_id\nFROM settings",
+        "options": {}
+      },
+      "id": "06000000-0000-4000-8000-000000000004",
+      "name": "Get_Recipients",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        240,
+        100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "pgStrideSoul0001",
+          "name": "Postgres - stride_soul"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "06000000-0000-4000-8000-000000000005",
+      "name": "Error_And_Recipients",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email_to }}",
+        "subject": "={{ '[Stride & Soul] ' + $json.workflow + ' failed at ' + ($json.node || 'unknown node') }}",
+        "emailType": "text",
+        "message": "={{ '⚠️ ' + $json.workflow + ' failed' }}\nNode: {{ $json.node || '-' }}\nError: {{ $json.error }}\nExecution: {{ $json.execution_id }} ({{ $json.mode || '-' }})\n{{ $json.execution_url || '' }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "06000000-0000-4000-8000-000000000006",
+      "name": "Notify_Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        780,
+        -100
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "RQhZjnIK7lphD0zZ",
+          "name": "Gmail account kev.alv"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ '⚠️ ' + $json.workflow + ' failed' }}\nNode: {{ $json.node || '-' }}\nError: {{ $json.error }}\nExecution: {{ $json.execution_id }} ({{ $json.mode || '-' }})\n{{ $json.execution_url || '' }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "06000000-0000-4000-8000-000000000007",
+      "name": "Notify_Developer",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        780,
+        100
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "hyXOUJ7SYNcItgs2",
+          "name": "Djvlivsbot"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "On_Error": {
+      "main": [
+        [
+          {
+            "node": "Build_Error_Row",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get_Recipients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build_Error_Row": {
+      "main": [
+        [
+          {
+            "node": "Register_Metric",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Error_And_Recipients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_Recipients": {
+      "main": [
+        [
+          {
+            "node": "Error_And_Recipients",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Error_And_Recipients": {
+      "main": [
+        [
+          {
+            "node": "Notify_Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify_Developer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}

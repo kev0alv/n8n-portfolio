@@ -1,0 +1,694 @@
+{
+  "id": "ssBigQueryLoad07",
+  "name": "07 Nightly BigQuery Load",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 2
+            }
+          ]
+        }
+      },
+      "id": "07000000-0000-4000-8000-000000000001",
+      "name": "Every_Night_0200",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "07000000-0000-4000-8000-000000000002",
+      "name": "Run_Now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "fileSelector": "/bigquery/0*.sql",
+        "options": {}
+      },
+      "id": "07000000-0000-4000-8000-000000000003",
+      "name": "Read_SQL_Files",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {
+          "keepSource": "json"
+        }
+      },
+      "id": "07000000-0000-4000-8000-000000000004",
+      "name": "SQL_To_Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 01 (tables) then 02 (views), straight from the repo: the only copy of the schema.\n$execution.customData.set('started_ms', String(Date.now()));\nconst files = $input.all().map((i) => i.json);\nif (files.some((f) => !f.fileName)) throw new Error('SQL file without fileName');\nfiles.sort((a, b) => a.fileName.localeCompare(b.fileName));\nreturn [{ json: { files: files.map((f) => f.fileName), script: files.map((f) => f.data).join('\\n') } }];"
+      },
+      "id": "07000000-0000-4000-8000-000000000005",
+      "name": "Build_DDL_Script",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "options": {},
+        "method": "POST",
+        "url": "={{ 'https://bigquery.googleapis.com/bigquery/v2/projects/' + $env.GCP_PROJECT_ID + '/queries' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: $json.script, useLegacySql: false, location: 'US', timeoutMs: 60000 }) }}"
+      },
+      "id": "07000000-0000-4000-8000-000000000006",
+      "name": "Apply_DDL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "bigQuery00000001",
+          "name": "BigQuery - n8n-bigquery"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "options": {},
+        "method": "POST",
+        "url": "={{ 'https://bigquery.googleapis.com/bigquery/v2/projects/' + $env.GCP_PROJECT_ID + '/queries' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: \"SELECT c.table_name, TO_JSON_STRING(ARRAY_AGG(STRUCT(c.column_name AS name, c.data_type AS type) ORDER BY c.ordinal_position)) AS cols FROM `\" + $env.BQ_DATASET + \".INFORMATION_SCHEMA.COLUMNS` c JOIN `\" + $env.BQ_DATASET + \".INFORMATION_SCHEMA.TABLES` t USING (table_name) WHERE t.table_type = 'BASE TABLE' GROUP BY c.table_name ORDER BY c.table_name\", useLegacySql: false, location: 'US', timeoutMs: 60000 }) }}"
+      },
+      "id": "07000000-0000-4000-8000-000000000007",
+      "name": "Get_Columns",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        0
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "bigQuery00000001",
+          "name": "BigQuery - n8n-bigquery"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// One export query per BigQuery table. The columns come from BigQuery\n// (01_dataset_and_tables.sql), so names and contacts are never exported.\nconst res = $input.first().json;\nif (!res.jobComplete) throw new Error('Column query did not finish');\nconst ident = (s) => { if (!/^[a-z_][a-z0-9_]*$/.test(s)) throw new Error('Bad identifier: ' + s); return s; };\nreturn (res.rows || []).map((r) => {\n  const table = ident(r.f[0].v);\n  const cols = JSON.parse(r.f[1].v);\n  const pairs = cols.map(({ name, type }) => {\n    const c = '\"' + ident(name) + '\"';\n    const v = type === 'TIMESTAMP'\n      ? \"to_char(\" + c + \" AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') || ' UTC'\"\n      : c;\n    return \"'\" + name + \"', \" + v;\n  }).join(', ');\n  const sql = \"SELECT '\" + table + \"' AS table_name, count(*)::int AS n, \" +\n    \"coalesce(string_agg(json_build_object(\" + pairs + \")::text, E'\\\\n'), '') AS ndjson FROM \\\"\" + table + \"\\\"\";\n  return { json: { table, sql } };\n});"
+      },
+      "id": "07000000-0000-4000-8000-000000000008",
+      "name": "Build_Export_SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "07000000-0000-4000-8000-000000000009",
+      "name": "Each_Table",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1540,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {}
+      },
+      "id": "07000000-0000-4000-8000-000000000010",
+      "name": "Export_Table",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1760,
+        100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "pgStrideSoul0001",
+          "name": "Postgres - stride_soul"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Load job body: JSON config + NDJSON rows. An empty table sends an empty file (loads 0 rows).\nconst b = 'ss' + Date.now();\nconst meta = { configuration: {\n  labels: { n8n_execution: String($execution.id), workflow: '07_nightly_load' },\n  load: {\n    destinationTable: { projectId: $env.GCP_PROJECT_ID, datasetId: $env.BQ_DATASET, tableId: $json.table_name },\n    sourceFormat: 'NEWLINE_DELIMITED_JSON',\n    writeDisposition: 'WRITE_TRUNCATE',\n    createDisposition: 'CREATE_NEVER',   // tables come from 01_dataset_and_tables.sql only\n  },\n} };\nconst body = '--' + b + '\\r\\nContent-Type: application/json; charset=UTF-8\\r\\n\\r\\n' + JSON.stringify(meta) + '\\r\\n' +\n  '--' + b + '\\r\\nContent-Type: application/octet-stream\\r\\n\\r\\n' + $json.ndjson + '\\r\\n--' + b + '--';\nreturn { json: { table: $json.table_name, rows: $json.n, boundary: b, body } };"
+      },
+      "id": "07000000-0000-4000-8000-000000000011",
+      "name": "Build_Multipart",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "options": {},
+        "method": "POST",
+        "url": "={{ 'https://bigquery.googleapis.com/upload/bigquery/v2/projects/' + $env.GCP_PROJECT_ID + '/jobs?uploadType=multipart' }}",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "={{ 'multipart/related; boundary=' + $json.boundary }}",
+        "body": "={{ $json.body }}"
+      },
+      "id": "07000000-0000-4000-8000-000000000012",
+      "name": "Insert_Load_Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        100
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "bigQuery00000001",
+          "name": "BigQuery - n8n-bigquery"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "id": "07000000-0000-4000-8000-000000000013",
+      "name": "Wait_3s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2420,
+        100
+      ],
+      "webhookId": "07000000-0000-4000-8000-0000000000aa"
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "options": {},
+        "url": "={{ 'https://bigquery.googleapis.com/bigquery/v2/projects/' + $json.jobReference.projectId + '/jobs/' + $json.jobReference.jobId + '?location=' + $json.jobReference.location }}"
+      },
+      "id": "07000000-0000-4000-8000-000000000014",
+      "name": "Get_Job_Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        100
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "bigQuery00000001",
+          "name": "BigQuery - n8n-bigquery"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "07c00000-0000-4000-8000-000000000001",
+              "leftValue": "={{ $json.status.state }}",
+              "rightValue": "DONE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "07000000-0000-4000-8000-000000000015",
+      "name": "Job_Done",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// One metric row for the whole run; per-table detail kept in \"tables\".\nconst results = $input.all().map(({ json: j }) => ({\n  table: j.configuration && j.configuration.load && j.configuration.load.destinationTable.tableId,\n  job: j.jobReference && j.jobReference.jobId,\n  rows: Number((j.statistics && j.statistics.load && j.statistics.load.outputRows) || 0),\n  error: (j.status && j.status.errorResult && j.status.errorResult.message) || null,\n}));\nconst failed = results.filter((r) => r.error);\nconst started = Number($execution.customData.get('started_ms'));\nreturn [{ json: {\n  execution_id: String($execution.id),\n  workflow: $workflow.name,\n  status: failed.length ? 'error' : 'success',\n  started_at: started ? new Date(started).toISOString() : null,\n  finished_at: new Date().toISOString(),\n  node: failed.length ? 'Get_Job_Status' : null,\n  error: failed.length ? failed.map((f) => f.table + ': ' + f.error).join(' | ') : null,\n  user_hash: null,\n  registered_by: 'MAIN_FLOW',\n  failed_count: failed.length,\n  tables: results,\n} }];"
+      },
+      "id": "07000000-0000-4000-8000-000000000016",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -150
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "07c00000-0000-4000-8000-000000000002",
+              "leftValue": "={{ $json.failed_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "07000000-0000-4000-8000-000000000017",
+      "name": "Any_Failed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        -150
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'BigQuery load failed: ' + $json.error }}"
+      },
+      "id": "07000000-0000-4000-8000-000000000018",
+      "name": "Fail_Run",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2200,
+        -250
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ssRegisterMetr05"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "execution_id": "={{ $json.execution_id }}",
+            "workflow": "={{ $json.workflow }}",
+            "status": "={{ $json.status }}",
+            "started_at": "={{ $json.started_at }}",
+            "finished_at": "={{ $json.finished_at }}",
+            "node": "={{ $json.node }}",
+            "error": "={{ $json.error }}",
+            "user_hash": "={{ $json.user_hash }}",
+            "registered_by": "={{ $json.registered_by }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "execution_id",
+              "displayName": "execution_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "workflow",
+              "displayName": "workflow",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "started_at",
+              "displayName": "started_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "finished_at",
+              "displayName": "finished_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "node",
+              "displayName": "node",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "user_hash",
+              "displayName": "user_hash",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            },
+            {
+              "id": "registered_by",
+              "displayName": "registered_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "any",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "07000000-0000-4000-8000-000000000019",
+      "name": "Register_Metric",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2200,
+        -50
+      ]
+    }
+  ],
+  "connections": {
+    "Every_Night_0200": {
+      "main": [
+        [
+          {
+            "node": "Read_SQL_Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run_Now": {
+      "main": [
+        [
+          {
+            "node": "Read_SQL_Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read_SQL_Files": {
+      "main": [
+        [
+          {
+            "node": "SQL_To_Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL_To_Text": {
+      "main": [
+        [
+          {
+            "node": "Build_DDL_Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build_DDL_Script": {
+      "main": [
+        [
+          {
+            "node": "Apply_DDL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply_DDL": {
+      "main": [
+        [
+          {
+            "node": "Get_Columns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_Columns": {
+      "main": [
+        [
+          {
+            "node": "Build_Export_SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build_Export_SQL": {
+      "main": [
+        [
+          {
+            "node": "Each_Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Each_Table": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Export_Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Export_Table": {
+      "main": [
+        [
+          {
+            "node": "Build_Multipart",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build_Multipart": {
+      "main": [
+        [
+          {
+            "node": "Insert_Load_Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert_Load_Job": {
+      "main": [
+        [
+          {
+            "node": "Wait_3s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait_3s": {
+      "main": [
+        [
+          {
+            "node": "Get_Job_Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_Job_Status": {
+      "main": [
+        [
+          {
+            "node": "Job_Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job_Done": {
+      "main": [
+        [
+          {
+            "node": "Each_Table",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait_3s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary": {
+      "main": [
+        [
+          {
+            "node": "Any_Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any_Failed": {
+      "main": [
+        [
+          {
+            "node": "Fail_Run",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Register_Metric",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "ssErrorHandler06",
+    "timezone": "America/El_Salvador",
+    "executionTimeout": 900
+  },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}

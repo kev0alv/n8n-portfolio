@@ -1,0 +1,138 @@
+{
+  "id": "ssRegisterMetr05",
+  "name": "05 Register_Metric",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "execution_id",
+              "type": "any"
+            },
+            {
+              "name": "workflow",
+              "type": "any"
+            },
+            {
+              "name": "status",
+              "type": "any"
+            },
+            {
+              "name": "started_at",
+              "type": "any"
+            },
+            {
+              "name": "finished_at",
+              "type": "any"
+            },
+            {
+              "name": "node",
+              "type": "any"
+            },
+            {
+              "name": "error",
+              "type": "any"
+            },
+            {
+              "name": "user_hash",
+              "type": "any"
+            },
+            {
+              "name": "registered_by",
+              "type": "any"
+            }
+          ]
+        }
+      },
+      "id": "05000000-0000-4000-8000-000000000001",
+      "name": "When_Called",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// One row per execution. Never stores raw e-mails or phone numbers.\nconst r = $json;\nconst mask = (t) => t == null || t === '' ? null : String(t)\n  .replace(/[\\w.+-]+@[\\w-]+\\.[\\w.-]+/g, '[email]')\n  .replace(/\\+?\\d[\\d\\s-]{6,}\\d/g, '[phone]')\n  .slice(0, 500);\nconst started = r.started_at ? new Date(r.started_at) : null;\nconst finished = r.finished_at ? new Date(r.finished_at) : new Date();\nconst ok = (d) => d && !isNaN(d);\nreturn { json: {\n  execution_id: String(r.execution_id ?? 'n/a'),\n  workflow: String(r.workflow || 'unknown'),\n  status: ['success', 'error', 'invalid_response'].includes(r.status) ? r.status : 'error',\n  started_at: ok(started) ? started.toISOString() : null,\n  finished_at: finished.toISOString(),\n  duration_s: ok(started) ? (finished - started) / 1000 : null,\n  node: r.node || null,\n  error: mask(r.error),\n  user_hash: r.user_hash || null,\n  registered_by: r.registered_by === 'ERROR_HANDLER' ? 'ERROR_HANDLER' : 'MAIN_FLOW',\n} };"
+      },
+      "id": "05000000-0000-4000-8000-000000000002",
+      "name": "Sanitize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "name",
+          "value": "execution_metrics"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "05000000-0000-4000-8000-000000000003",
+      "name": "Insert_Metric",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        480,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "pgStrideSoul0001",
+          "name": "Postgres - stride_soul"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When_Called": {
+      "main": [
+        [
+          {
+            "node": "Sanitize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sanitize": {
+      "main": [
+        [
+          {
+            "node": "Insert_Metric",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}

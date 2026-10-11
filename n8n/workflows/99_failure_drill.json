@@ -1,0 +1,59 @@
+{
+  "id": "ssFailureDrill99",
+  "name": "99 Failure Drill",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "99000000-0000-4000-8000-000000000001",
+      "name": "Every_Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Failure drill: this error is intentional (contact test@example.com, +503 7000 0000)"
+      },
+      "id": "99000000-0000-4000-8000-000000000002",
+      "name": "Fail_On_Purpose",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        240,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Every_Minute": {
+      "main": [
+        [
+          {
+            "node": "Fail_On_Purpose",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "ssErrorHandler06"
+  },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}

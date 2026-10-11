@@ -92,8 +92,13 @@ load recreates them from Postgres.
 
 1. In Telegram, open **@BotFather** → `/newbot` → name `Sole · Stride & Soul`
    → a username ending in `bot`. Copy the token into `TELEGRAM_BOT_TOKEN`.
-2. Your numeric chat id for error alerts: send any message to
-   **@userinfobot** and copy the `Id` into `TELEGRAM_ONCALL_CHAT_ID`.
+2. Error alerts go to the people listed in Postgres (table `settings`), not
+   in `.env`. Get your numeric chat id from **@userinfobot**, send `/start`
+   to the alert bot, then:
+   ```powershell
+   docker compose exec postgres psql -U n8n -d stride_soul -c "UPDATE settings SET value = '<chat id>' WHERE key = 'alert_telegram_chat_id'"
+   ```
+   E-mail recipients: same table, key `alert_email_to` (comma-separated).
 
 ## 8. ngrok (public HTTPS for Telegram)
 

@@ -12,6 +12,13 @@ INSERT INTO settings (key, value, description) VALUES
   ('return_window_days',      '14',   'Days after delivery to request an exchange')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, description = EXCLUDED.description;
 
+-- Error-alert recipients, read by the Error Workflow (06). Edited in place
+-- with UPDATE (see docs/SETUP.md), so a re-run never overwrites them.
+INSERT INTO settings (key, value, description) VALUES
+  ('alert_email_to',         'kev.alvareze@gmail.com', 'Comma-separated e-mails notified on every workflow error (dev, QA)'),
+  ('alert_telegram_chat_id', '',                       'Telegram chat id of the on-call developer (instant error alert); empty = off')
+ON CONFLICT (key) DO NOTHING;
+
 INSERT INTO catalog (product_id, model, brand, type, subculture, size_range, color, price, stock) VALUES
   ( 1, '1460 Smooth', 'Dr. Martens', 'boots', 'punk', '35-44', 'Black', 189.00, 12),
   ( 2, '1460 Smooth', 'Dr. Martens', 'boots', 'goth', '35-44', 'Cherry Red', 199.00, 8),

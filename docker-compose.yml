@@ -36,8 +36,9 @@ x-n8n-env: &n8n-env
   # Read by the workflows
   GCP_PROJECT_ID: ${GCP_PROJECT_ID}
   BQ_DATASET: ${BQ_DATASET:-stride_soul}
-  TELEGRAM_ONCALL_CHAT_ID: ${TELEGRAM_ONCALL_CHAT_ID:-}
   USER_HASH_SALT: ${USER_HASH_SALT}
+  # Workflows read bigquery/*.sql straight from the repo (mounted below): one copy only
+  N8N_RESTRICT_FILE_ACCESS_TO: /bigquery
 
 services:
   postgres:
@@ -103,6 +104,7 @@ services:
       - "5678:5678"
     volumes:
       - n8n_data:/home/node/.n8n
+      - ./bigquery:/bigquery:ro
     healthcheck:
       # 127.0.0.1, not localhost: inside the container localhost resolves to ::1 and n8n listens on IPv4 only
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz/readiness || exit 1"]
@@ -121,6 +123,8 @@ services:
     command: worker --concurrency=10
     environment:
       <<: *n8n-env
+    volumes:
+      - ./bigquery:/bigquery:ro
     depends_on:
       n8n:
         condition: service_healthy

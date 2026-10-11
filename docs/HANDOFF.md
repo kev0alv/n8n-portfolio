@@ -2,7 +2,7 @@
 
 > Documento interno de trabajo para Kevin y para la próxima sesión de Claude.
 > Está en español a propósito: el resto del repo está en inglés.
-> Última actualización: 2026-10-10, fase 3 completa: infraestructura y carga a BigQuery probadas en la laptop. Siguiente: fase 4.
+> Última actualización: 2026-10-10, fase 4 en curso: 05, 06, 07 y 99 construidos y probados; 07 publicado (02:00). Siguiente: 01–04 (requieren cuentas de 6.4).
 
 ---
 
@@ -42,6 +42,9 @@
 | Workflows anteriores | No se migran: agente nuevo |
 | Presupuesto | **USD 0.** Kevin no puede pagar el prepago de USD 30 de Google Cloud. Por eso BigQuery corre en **sandbox**. |
 | Arquitectura (revisada y aprobada) | **Postgres** = operación (ventas, stock, tickets, casos, eventos, métricas). **BigQuery sandbox** = copia analítica recargada cada noche por n8n. **Looker Studio** sobre BigQuery. |
+| Fuente única | Los **datos** se leen siempre de una sola fuente de verdad: **Postgres**. BigQuery es solo una copia derivada para análisis. Nunca leer el mismo dato de dos lugares, aunque estén sincronizados. (Además, n8n lee `bigquery/*.sql` montado desde el repo en lugar de copiarlo.) |
+| Alertas | Ante un error, **siempre** se guarda el log en SQL (fila `ERROR_HANDLER` en `execution_metrics`, que llega a BigQuery y Looker) **y** se notifica a los contactos relevantes (dev para depurar, QA para revisar mejoras). En un entorno laboral el canal sería **correo**, como hacía PAD. Canal y lista de contactos: por decidir. |
+| Orden de construcción | 05 Register_Metric y 06 Error Workflow primero, para que el 07 nazca conectado a ambos. |
 
 **Por qué híbrido y no todo en BigQuery:** el sandbox no permite INSERT ni UPDATE y
 borra las tablas a los 60 días. La recarga completa nocturna (load jobs con
@@ -75,11 +78,12 @@ flowchart LR
 | 1. Descubrimiento | ✅ |
 | 2. Orquestación (mapa) | ✅ aprobado (versión revisada a USD 0) |
 | 3. Infraestructura | 🟡 en curso. Detalle abajo. |
-| 4. Construcción de workflows | ☐ |
+| 4. Construcción de workflows | 🟡 05, 06, 07 y 99 ✅ (ver §7.1). Faltan 01–04, 08, 09. |
 | 5. Pruebas con IDs de ejecución | ☐ |
 | 6. Dashboard Looker Studio | ☐ |
 | 7. Documentación (MD por workflow, SOP) | ☐ |
 | 8. Entrega (guion de demo para entrevistas) | ☐ |
+| 9. Adicional: reporte de ROI en Looker Studio sobre las mismas tablas de BigQuery | ☐ al final del proyecto |
 
 ### Fase 3, detalle
 
@@ -105,7 +109,7 @@ flowchart LR
 | `bigquery/02_views.sql` | Vistas: stock, ventas diarias, duración por etapa, cuellos de botella, embudo, conversión, KPIs de ejecución, cola de soporte |
 | `docker-compose.yml` | n8n 2.42.4 main + worker, Redis, Postgres 17, ngrok (perfil `tunnel`), pasos de importación y setup |
 | `n8n/init/` | `build-credentials.js` (credenciales desde `.env` + `secrets/`), `import.sh`, `setup.sh` (owner + publicar workflows) |
-| `n8n/workflows/` | Vacío: aquí van los JSON de la fase 4 |
+| `n8n/workflows/` | `05_register_metric`, `06_error_workflow`, `07_nightly_bigquery_load`, `99_failure_drill` (IDs fijos `ssRegisterMetr05`, `ssErrorHandler06`, `ssBigQueryLoad07`, `ssFailureDrill99`) |
 | `docs/SETUP.md` | Guía de instalación en Windows, en inglés |
 | `.env.example` | Todas las variables, con instrucciones |
 
@@ -158,7 +162,7 @@ En `.env`:
 | API key de DeepSeek, nueva y solo para este proyecto | platform.deepseek.com | `DEEPSEEK_API_KEY` |
 | API key de Groq, cuenta personal | console.groq.com | `GROQ_API_KEY` |
 | Bot **Sole** | Telegram → @BotFather → `/newbot` | `TELEGRAM_BOT_TOKEN` |
-| Tu chat ID numérico | Telegram → @userinfobot | `TELEGRAM_ONCALL_CHAT_ID` |
+| Tu chat ID numérico (alertas) | Telegram → @userinfobot | No va en `.env`: tabla `settings` de Postgres, clave `alert_telegram_chat_id` |
 | Cuenta ngrok + authtoken | ngrok.com | `NGROK_AUTHTOKEN` |
 | Dominio estático gratuito de ngrok | ngrok.com → Domains | `NGROK_DOMAIN` (sin https) y `N8N_WEBHOOK_URL` (`https://…/`) |
 | Activar el túnel | — | `COMPOSE_PROFILES=tunnel` |
@@ -185,11 +189,22 @@ docker compose logs n8n-import
 | 03 | Transaction tools | Sub-workflows que llaman `register_sale`, `process_refund`, `process_exchange`, `open_support_case` |
 | 04 | Event & Audit Logger | Rama paralela con On Error Continue: `conversation_events` y `audit_logs` con PII enmascarada |
 | 05 | Register_Metric | Sub-workflow sin esperar; esquema §2.1 en `execution_metrics` |
-| 06 | Error Workflow | Fila con `ERROR_HANDLER` más alerta por Telegram a guardia |
+| 06 | Error Workflow | Fila `ERROR_HANDLER` en `execution_metrics` (vía 05) **y** notificación a los contactos relevantes |
 | 07 | Nightly BigQuery Load | 02:00: exportar tablas de Postgres → load jobs `WRITE_TRUNCATE` → re-ejecutar `02_views.sql` |
 | 08 | Ask Your Data | Agente analista sobre BigQuery, solo SELECT |
 | 09 | Daily KPI Digest | Premium; lo primero que se recorta |
 | 99 | Failure Drill | Schedule + Stop and Error; se desactiva al terminar |
+
+### 7.1 Construido y probado (2026-10-10)
+
+| Workflow | Qué hace | Evidencia |
+|---|---|---|
+| 05 Register_Metric | Sub-workflow (sin esperar). Calcula `duration_s`, recorta el error a 500 caracteres y enmascara correos y teléfonos. **Único** que escribe en `execution_metrics`. | Ejecuciones 5 y 9 |
+| 06 Error Workflow | Error Trigger → fila `ERROR_HANDLER` vía 05 **y** aviso por Gmail (destinatarios `alert_email_to`) y Telegram Djvlivsbot (`alert_telegram_chat_id`); ambos desde la tabla `settings`. | Ejecución 8: correo `SENT`, Telegram `message_id`, fila con `[email]` y `[phone]` enmascarados |
+| 07 Nightly BigQuery Load | 02:00 (y `Run_Now`). Lee `/bigquery/0*.sql` y lo aplica (tablas + vistas), toma las columnas de `INFORMATION_SCHEMA`, exporta cada tabla de Postgres a NDJSON y la carga con load job `WRITE_TRUNCATE` + `CREATE_NEVER` (jobs etiquetados con `n8n_execution`), espera cada job y registra la métrica. Si alguna tabla falla → Stop and Error → 06. | Ejecuciones 4 y 10: 6 tablas, `catalog` 40 filas, ~40 s. Ejecución 6: fallo forzado en `Export_Table`. `v_execution_kpis` en BigQuery muestra las métricas. |
+| 99 Failure Drill | Falla cada minuto a propósito; publicarlo solo durante un simulacro. | Ejecución 7 |
+
+Recreación: `DROP TABLE stride_soul.returns` en BigQuery → ejecución 12 (manual, desde el editor) la recreó con `01_dataset_and_tables.sql` y cargó las 6 tablas (`execution_metrics`: 3 filas). Publicado el 07: `ACTIVATE_WORKFLOWS=ssRegisterMetr05 ssErrorHandler06 ssBigQueryLoad07`. Solo corre si la laptop y Docker Desktop están encendidos a las 02:00.
 
 Pruebas previstas (fase 5): consulta de catálogo, correo inválido, venta, venta
 simultánea del último par desde n8n, reembolso, cambio, escalamiento, marca fuera de
@@ -222,6 +237,11 @@ caídos que dan contingencia, simulacro de fallo, agente analista intentando esc
 | BigQuery sandbox | Sin INSERT/UPDATE ni streaming; tablas expiran a los 60 días | Postgres opera; BigQuery se recarga completo cada noche |
 | Credencial `googleApi` en HTTP Request | Por defecto (`httpNode: false`) el nodo HTTP Request no la puede usar | `build-credentials.js` la crea con `httpNode: true` y `scopes: https://www.googleapis.com/auth/bigquery` |
 | `n8n execute` (CLI) | No soporta queue mode: corre en el proceso main | Solo para pruebas; las ejecuciones reales van por la cola |
+| Sub-workflows y Error Workflow | En n8n 2.x deben estar **publicados** o fallan con "Workflow is not active" | `ACTIVATE_WORKFLOWS=ssRegisterMetr05 ssErrorHandler06` en `.env` |
+| Error Workflow en pruebas | No se dispara con `n8n execute` (CLI) ni con ejecuciones manuales | Probar con el 99 Failure Drill publicado unos minutos |
+| `n8n execute` sin Manual Trigger | "Missing node to start execution" si solo hay Schedule | El 07 tiene `Run_Now` (Manual Trigger) junto al Schedule |
+| Credenciales OAuth (Gmail) y del bot de alertas | Reimportarlas desde `.env` borraría el token de Google en cada `up` | Viven solo en n8n, creadas en el editor. Sus IDs (`RQhZjnIK7lphD0zZ`, `hyXOUJ7SYNcItgs2`) están en el JSON del 06: si se recrean, reasignarlas en el 06 |
+| Acceso a archivos | n8n 2.x restringe lectura de disco | `N8N_RESTRICT_FILE_ACCESS_TO=/bigquery` + `./bigquery:/bigquery:ro` en n8n y worker |
 
 ## 10. Reglas de seguridad
 
